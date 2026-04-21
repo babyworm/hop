@@ -1,13 +1,9 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
+import { createHopOverrides } from './hop-overrides';
 
 const upstreamSrc = resolve(__dirname, '../../third_party/rhwp/rhwp-studio/src');
 const hopSrc = resolve(__dirname, 'src');
-
-const hopOverride = (id: string) => ({
-  find: `@/${id}`,
-  replacement: resolve(hopSrc, id),
-});
 
 export default defineConfig({
   test: {
@@ -19,19 +15,7 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      hopOverride('core/font-loader'),
-      hopOverride('core/bridge-factory'),
-      hopOverride('core/document-files'),
-      hopOverride('core/desktop-events'),
-      hopOverride('core/tauri-bridge'),
-      hopOverride('command/shortcut-map'),
-      hopOverride('command/commands/file'),
-      hopOverride('ui/custom-select'),
-      hopOverride('ui/dialog'),
-      hopOverride('ui/print-dialog'),
-      hopOverride('ui/toolbar'),
-      hopOverride('styles/custom-select.css'),
-      hopOverride('styles/font-set-dialog.css'),
+      ...createHopOverrides(hopSrc),
       { find: '@upstream', replacement: upstreamSrc },
       { find: '@', replacement: upstreamSrc },
     ],

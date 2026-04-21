@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { basename, dirname, relative, resolve } from 'node:path';
 import { copyFileSync, createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import type { Plugin } from 'vite';
+import { createHopOverrides } from './hop-overrides';
 
 const require = createRequire(import.meta.url);
 const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
@@ -11,11 +12,6 @@ const hopSrc = resolve(__dirname, 'src');
 const rhwpCore = normalizePath(require.resolve('@rhwp/core/rhwp.js'));
 const rhwpCoreDir = dirname(rhwpCore);
 const fontAssetsDir = resolve(__dirname, '../../assets/fonts');
-
-const hopOverride = (id: string) => ({
-  find: `@/${id}`,
-  replacement: resolve(hopSrc, id),
-});
 
 function hopFontAssets(): Plugin {
   return {
@@ -68,19 +64,7 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      hopOverride('core/font-loader'),
-      hopOverride('core/bridge-factory'),
-      hopOverride('core/document-files'),
-      hopOverride('core/desktop-events'),
-      hopOverride('core/tauri-bridge'),
-      hopOverride('command/shortcut-map'),
-      hopOverride('command/commands/file'),
-      hopOverride('ui/custom-select'),
-      hopOverride('ui/dialog'),
-      hopOverride('ui/print-dialog'),
-      hopOverride('ui/toolbar'),
-      hopOverride('styles/custom-select.css'),
-      hopOverride('styles/font-set-dialog.css'),
+      ...createHopOverrides(hopSrc),
       { find: '@wasm/rhwp.js', replacement: rhwpCore },
       { find: '@upstream', replacement: upstreamSrc },
       { find: '@', replacement: upstreamSrc },
