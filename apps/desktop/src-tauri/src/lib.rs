@@ -8,6 +8,7 @@ mod updates;
 mod windows;
 
 use std::path::{Path, PathBuf};
+use std::{env, ffi::OsStr};
 use tauri::{AppHandle, Emitter, Manager};
 
 use commands::{
@@ -31,14 +32,14 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             let paths = document_paths_from_args(&args, &cwd);
             queue_open_paths(app, paths);
-            let payload = serde_json::json!({ "args": args, "cwd": cwd });
-            let _ = app.emit("hop-second-instance", payload);
         }))
         .setup(|app| {
             #[cfg(target_os = "macos")]
             menu::install(app)?;
             #[cfg(not(target_os = "macos"))]
             app.set_menu(tauri::menu::Menu::new(app)?)?;
+            #[cfg(not(target_os = "macos"))]
+            queue_open_paths(app.handle(), startup_document_paths());
             if let Some(window) = app.get_webview_window("main") {
                 windows::install_editor_window_minimum(&window);
                 windows::attach_document_drop_handler(app.handle(), &window);
@@ -102,28 +103,41 @@ fn queue_open_paths(app: &AppHandle, paths: Vec<String>) {
 }
 
 fn document_paths_from_args(args: &[String], cwd: &str) -> Vec<String> {
+    let cwd = Path::new(cwd);
     args.iter()
-        .filter_map(|arg| document_path_from_arg(arg, cwd))
+        .skip(1)
+        .filter_map(|arg| document_path_from_os_arg(OsStr::new(arg), Some(cwd)))
         .collect()
 }
 
-fn document_path_from_arg(arg: &str, cwd: &str) -> Option<String> {
-    if let Ok(url) = tauri::Url::parse(arg) {
-        if let Ok(path) = url.to_file_path() {
-            return document_path_from_path(path);
+#[cfg(not(target_os = "macos"))]
+fn startup_document_paths() -> Vec<String> {
+    let cwd = env::current_dir().ok();
+    env::args_os()
+        .skip(1)
+        .filter_map(|arg| document_path_from_os_arg(&arg, cwd.as_deref()))
+        .collect()
+}
+
+fn document_path_from_os_arg(arg: &OsStr, cwd: Option<&Path>) -> Option<String> {
+    if let Some(arg) = arg.to_str() {
+        if let Ok(url) = tauri::Url::parse(arg) {
+            if let Ok(path) = url.to_file_path() {
+                return document_path_from_path(path);
+            }
         }
     }
 
     let path = PathBuf::from(arg);
-    let resolved = if path.is_absolute() {
-        path
-    } else {
-        Path::new(cwd).join(path)
+    let resolved = match cwd {
+        Some(cwd) if !path.is_absolute() => cwd.join(path),
+        _ => path,
     };
     document_path_from_path(resolved)
 }
 
-fn document_path_from_path(path: PathBuf) -> Option<String> {
+pub(crate) fn document_path_from_path(path: impl AsRef<Path>) -> Option<String> {
+    let path = path.as_ref();
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     if ext != "hwp" && ext != "hwpx" {
         return None;
@@ -150,11 +164,11 @@ mod tests {
     #[test]
     fn document_path_from_arg_resolves_relative_paths_against_cwd() {
         let dir = tempfile::tempdir().unwrap();
-        let cwd = dir.path().to_string_lossy();
+        let cwd = dir.path();
         let expected = dir.path().join("docs/sample.hwp");
 
         assert_eq!(
-            document_path_from_arg("docs/sample.hwp", &cwd),
+            document_path_from_os_arg(OsStr::new("docs/sample.hwp"), Some(cwd)),
             Some(expected.to_string_lossy().to_string())
         );
     }
@@ -165,17 +179,18 @@ mod tests {
         let url = tauri::Url::from_file_path(&path).unwrap().to_string();
 
         assert_eq!(
-            document_path_from_arg(&url, "/ignored"),
+            document_path_from_os_arg(OsStr::new(&url), Some(Path::new("/ignored"))),
             Some(path.to_string_lossy().to_string())
         );
     }
 
     #[test]
-    fn document_paths_from_args_filters_unsupported_args() {
+    fn document_paths_from_args_skip_executable_and_filter_unsupported_args() {
         let dir = tempfile::tempdir().unwrap();
         let cwd = dir.path().to_string_lossy();
         let paths = document_paths_from_args(
             &[
+                dir.path().join("HOP.exe").to_string_lossy().to_string(),
                 "first.hwp".to_string(),
                 "notes.txt".to_string(),
                 "second.HWPX".to_string(),
@@ -190,5 +205,22 @@ mod tests {
                 dir.path().join("second.HWPX").to_string_lossy().to_string()
             ]
         );
+    }
+
+    #[test]
+    fn startup_like_args_skip_the_executable_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path();
+        let executable = dir.path().join("sample.hwp");
+        let document = dir.path().join("opened.hwpx");
+        let args = [executable.as_os_str(), document.as_os_str()];
+
+        let paths = args
+            .iter()
+            .skip(1)
+            .filter_map(|arg| document_path_from_os_arg(arg, Some(cwd)))
+            .collect::<Vec<_>>();
+
+        assert_eq!(paths, vec![document.to_string_lossy().to_string()]);
     }
 }

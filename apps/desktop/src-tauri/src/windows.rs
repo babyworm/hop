@@ -103,13 +103,7 @@ pub fn attach_document_drop_handler(app: &AppHandle, window: &WebviewWindow) {
 fn document_paths(paths: &[PathBuf]) -> Vec<String> {
     paths
         .iter()
-        .filter(|path| {
-            path.extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| ext.eq_ignore_ascii_case("hwp") || ext.eq_ignore_ascii_case("hwpx"))
-                .unwrap_or(false)
-        })
-        .map(|path| path.to_string_lossy().to_string())
+        .filter_map(super::document_path_from_path)
         .collect()
 }
 

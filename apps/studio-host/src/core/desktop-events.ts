@@ -1,6 +1,7 @@
 import type { CommandDispatcher } from '@/command/dispatcher';
 import type { EventBus } from '@/core/event-bus';
 import { isTauriRuntime } from '@/core/bridge-factory';
+import { findLatestSupportedDocumentPath, hasSupportedDocumentPath } from '@/core/document-files';
 import type { DesktopBridgeApi, DesktopLoadPayload } from './tauri-bridge';
 
 type DesktopRuntimeBridge = Partial<
@@ -116,10 +117,6 @@ async function handleDesktopCloseRequest(
   }
 }
 
-function hasSupportedDocumentPath(paths: string[]): boolean {
-  return paths.some((value) => /\.(hwp|hwpx)$/i.test(value));
-}
-
 function setDesktopDragActive(active: boolean): void {
   document.getElementById('scroll-container')?.classList.toggle('drag-over', active);
 }
@@ -135,7 +132,7 @@ async function openLatestDesktopDocument({
   paths: string[];
   setMessage(message: string): void;
 }): Promise<void> {
-  const path = [...paths].reverse().find((value) => /\.(hwp|hwpx)$/i.test(value));
+  const path = findLatestSupportedDocumentPath(paths);
   if (!path) {
     if (paths.length > 0) setMessage('HWP/HWPX 파일만 열 수 있습니다');
     return;

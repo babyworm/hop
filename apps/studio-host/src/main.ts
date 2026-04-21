@@ -7,6 +7,7 @@ import { InputHandler } from '@/engine/input-handler';
 import { Toolbar } from '@/ui/toolbar';
 import { MenuBar } from '@/ui/menu-bar';
 import { loadWebFonts } from '@/core/font-loader';
+import { isSupportedDocumentPath } from '@/core/document-files';
 import { CommandRegistry } from '@/command/registry';
 import { CommandDispatcher } from '@/command/dispatcher';
 import type { EditorContext, CommandServices } from '@/command/types';
@@ -252,8 +253,7 @@ function setupFileInput(): void {
   fileInput.addEventListener('change', async (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
-    const name = file.name.toLowerCase();
-    if (!name.endsWith('.hwp') && !name.endsWith('.hwpx')) {
+    if (!isSupportedDocumentPath(file.name)) {
       alert('HWP/HWPX 파일만 지원합니다.');
       return;
     }
@@ -280,8 +280,7 @@ function setupFileInput(): void {
     if (isTauriRuntime()) return;
     const file = e.dataTransfer?.files[0];
     if (!file) return;
-    const dropName = file.name.toLowerCase();
-    if (!dropName.endsWith('.hwp') && !dropName.endsWith('.hwpx')) {
+    if (!isSupportedDocumentPath(file.name)) {
       alert('HWP/HWPX 파일만 지원합니다.');
       return;
     }
