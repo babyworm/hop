@@ -70,6 +70,7 @@ export default defineConfig({
     alias: [
       hopOverride('core/font-loader'),
       hopOverride('core/bridge-factory'),
+      hopOverride('core/document-files'),
       hopOverride('core/desktop-events'),
       hopOverride('core/tauri-bridge'),
       hopOverride('command/shortcut-map'),
