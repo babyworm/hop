@@ -99,6 +99,7 @@ const sbMessage = () => document.getElementById('sb-message')!;
 const sbPage = () => document.getElementById('sb-page')!;
 const sbSection = () => document.getElementById('sb-section')!;
 const sbZoomVal = () => document.getElementById('sb-zoom-val')!;
+const ZOOM_STEP = 0.1;
 
 async function initialize(): Promise<void> {
   const msg = sbMessage();
@@ -333,12 +334,34 @@ function setupFileInput(): void {
 function setupZoomControls(): void {
   if (!canvasView) return;
   const vm = canvasView.getViewportManager();
+  const applyIncrementalZoom = (direction: 1 | -1) => {
+    vm.setZoom(vm.getZoom() + ZOOM_STEP * direction);
+  };
+
+  if (isTauriRuntime() && desktopPlatform === 'windows') {
+    document.addEventListener(
+      'wheel',
+      (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+
+        // On Windows WebView2, enabling pinch zoom support can also reopen page zoom.
+        // Capture and reroute modified wheel gestures to document zoom before the
+        // embedded browser consumes them as native page scaling.
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (wasm.pageCount === 0) return;
+        applyIncrementalZoom(e.deltaY < 0 ? 1 : -1);
+      },
+      { capture: true, passive: false },
+    );
+  }
 
   document.getElementById('sb-zoom-in')!.addEventListener('click', () => {
-    vm.setZoom(vm.getZoom() + 0.1);
+    applyIncrementalZoom(1);
   });
   document.getElementById('sb-zoom-out')!.addEventListener('click', () => {
-    vm.setZoom(vm.getZoom() - 0.1);
+    applyIncrementalZoom(-1);
   });
 
   // 폭 맞춤: 용지 폭에 맞게 줌 조절
@@ -381,10 +404,10 @@ function setupZoomControls(): void {
     if (!e.ctrlKey && !e.metaKey) return;
     if (e.key === '=' || e.key === '+') {
       e.preventDefault();
-      vm.setZoom(vm.getZoom() + 0.1);
+      applyIncrementalZoom(1);
     } else if (e.key === '-') {
       e.preventDefault();
-      vm.setZoom(vm.getZoom() - 0.1);
+      applyIncrementalZoom(-1);
     } else if (e.key === '0') {
       e.preventDefault();
       vm.setZoom(1.0);

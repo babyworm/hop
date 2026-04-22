@@ -1,0 +1,16 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "HOP",
+        "url": "index.html",
+        "width": 1280,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 720,
+        "zoomHotkeysEnabled": true
+      }
+    ]
+  }
+}

@@ -72,16 +72,21 @@ upstream에 요청할 범위:
 - 사용자 제보: 터치패드 확대/축소 및 이동 제스처가 부자연스럽고 불편함
 
 소유권 판단 근거:
-- viewport의 wheel 및 zoom 동작은 upstream이 소유한다.
-- HOP는 `viewport-manager.ts`를 override하지 않는다.
+- 편집기 내부의 viewport wheel/zoom 로직 자체는 upstream이 소유한다.
+- 다만 Windows에서 터치패드 pinch가 WebView2/Tauri 설정에 의해 편집기까지 도달하지 못하는 문제는 HOP 데스크톱 셸 소유다.
+- 따라서 제스처 이슈는 "런타임 전달 문제"와 "편집기 내부 줌 UX 문제"를 나눠서 소유권을 판단해야 한다.
 
 근거 코드:
 - [viewport-manager.ts](../../third_party/rhwp/rhwp-studio/src/view/viewport-manager.ts): modifier-wheel 기반 zoom 처리 소유
 
+현재 판단:
+- Windows WebView2에서 pinch zoom을 허용하는 설정과 modified wheel을 문서 줌으로 연결하는 셸 계층 보정은 HOP에서 처리한다.
+- 그 이후에도 남는 zoom anchor, momentum scroll, 제스처 품질 문제는 upstream 검토 대상으로 본다.
+
 upstream에 요청할 범위:
-- 트랙패드 pinch 처리
+- 편집기 내부 zoom anchor 동작
 - momentum scroll과 modifier key 해석
-- zoom anchor 동작
+- 트랙패드 제스처 품질 자체
 - 가능하면 macOS와 Windows precision touchpad 기준으로 모두 검증
 
 ### 4. 줌 단계별 blur 및 고DPI 선명도 문제
