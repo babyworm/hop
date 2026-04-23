@@ -2,7 +2,6 @@ use rhwp::DocumentCore;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::hash::{DefaultHasher, Hasher};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -57,11 +56,12 @@ pub struct ExternalModificationStatus {
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct FileFingerprint {
     len: u64,
-    modified_nanos: u128,
-    content_hash: u64,
+    modified_millis: u64,
+    content_hash: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,7 +92,8 @@ pub struct DocumentSession {
     pub source_fingerprint: Option<FileFingerprint>,
     pub dirty: bool,
     pub revision: u64,
-    pub core: DocumentCore,
+    pub page_count: u32,
+    pub core: Option<DocumentCore>,
     pub page_svg_cache: HashMap<u32, (u64, String)>,
 }
 
@@ -123,7 +124,8 @@ impl DocumentSessionManager {
             source_fingerprint: None,
             dirty: false,
             revision: 1,
-            core,
+            page_count: core.page_count(),
+            core: Some(core),
             page_svg_cache: HashMap::new(),
         };
         let result = session.open_result("새 문서.hwp".to_string());
@@ -132,17 +134,12 @@ impl DocumentSessionManager {
         Ok(result)
     }
 
-    pub fn open_document_from_bytes(
+    pub fn open_document_tracking(
         &mut self,
         path: PathBuf,
-        bytes: &[u8],
+        source_fingerprint: Option<FileFingerprint>,
     ) -> Result<DocumentOpenResult, String> {
         let format = DocumentFormat::from_path(&path)?;
-
-        let mut core =
-            DocumentCore::from_bytes(bytes).map_err(|e| format!("문서 파싱 실패: {}", e))?;
-        core.convert_to_editable_native()
-            .map_err(|e| format!("편집 가능 문서 변환 실패: {}", e))?;
 
         let doc_id = Uuid::new_v4().to_string();
         let file_name = path
@@ -152,12 +149,13 @@ impl DocumentSessionManager {
             .to_string();
         let session = DocumentSession {
             doc_id: doc_id.clone(),
-            source_fingerprint: file_fingerprint_from_bytes(&path, bytes).ok(),
+            source_fingerprint: source_fingerprint.or_else(|| file_fingerprint(&path).ok()),
             source_path: Some(path),
             source_format: format,
             dirty: false,
             revision: 1,
-            core,
+            page_count: 0,
+            core: None,
             page_svg_cache: HashMap::new(),
         };
         let result = session.open_result(file_name);
@@ -214,10 +212,8 @@ impl DocumentSessionManager {
                 e
             )
         })?;
-        let mut core = DocumentCore::from_bytes(&bytes)
-            .map_err(|e| format!("저장 바이트 검증 실패: {}", e))?;
-        core.convert_to_editable_native()
-            .map_err(|e| format!("저장 문서 변환 실패: {}", e))?;
+        let core =
+            editable_core_from_bytes(&bytes, "저장 바이트 검증 실패", "저장 문서 변환 실패")?;
         session.finish_hwp_save(target_path, &bytes, Some(core))?;
         let _ = std::fs::remove_file(&staged_path);
         Ok(session.save_result())
@@ -256,7 +252,7 @@ impl DocumentSessionManager {
             }
         }
         let svg = session
-            .core
+            .ensure_core_loaded()?
             .render_page_svg_native(page_index)
             .map_err(|e| format!("페이지 렌더링 실패: {}", e))?;
         session
@@ -271,16 +267,21 @@ impl DocumentSessionManager {
         })
     }
 
-    pub fn query_document(&self, doc_id: &str, query: &str, args: Value) -> Result<Value, String> {
-        let session = self.session(doc_id)?;
+    pub fn query_document(
+        &mut self,
+        doc_id: &str,
+        query: &str,
+        args: Value,
+    ) -> Result<Value, String> {
+        let session = self.session_mut(doc_id)?;
         match query {
-            "documentInfo" => parse_json_string(session.core.get_document_info()),
-            "pageCount" => Ok(json!(session.core.page_count())),
+            "documentInfo" => parse_json_string(session.ensure_core_loaded()?.get_document_info()),
+            "pageCount" => Ok(json!(session.ensure_core_loaded()?.page_count())),
             "pageInfo" => {
                 let page_index = number_arg(&args, "pageIndex")?;
                 parse_json_string(
                     session
-                        .core
+                        .ensure_core_loaded()?
                         .get_page_info_native(page_index)
                         .map_err(|e| e.to_string())?,
                 )
@@ -289,7 +290,7 @@ impl DocumentSessionManager {
                 let section_index = number_arg(&args, "sectionIndex")?;
                 parse_json_string(
                     session
-                        .core
+                        .ensure_core_loaded()?
                         .get_page_def_native(section_index as usize)
                         .map_err(|e| e.to_string())?,
                 )
@@ -300,7 +301,7 @@ impl DocumentSessionManager {
                 let char_offset = number_arg(&args, "charOffset")?;
                 parse_json_string(
                     session
-                        .core
+                        .ensure_core_loaded()?
                         .get_cursor_rect_native(sec as usize, para as usize, char_offset as usize)
                         .map_err(|e| e.to_string())?,
                 )
@@ -311,7 +312,7 @@ impl DocumentSessionManager {
                 let y = float_arg(&args, "y")?;
                 parse_json_string(
                     session
-                        .core
+                        .ensure_core_loaded()?
                         .hit_test_native(page_num, x, y)
                         .map_err(|e| e.to_string())?,
                 )
@@ -320,14 +321,14 @@ impl DocumentSessionManager {
                 let sec = number_arg(&args, "sec")?;
                 let para = number_arg(&args, "para")?;
                 Ok(json!(session
-                    .core
+                    .ensure_core_loaded()?
                     .get_paragraph_length_native(sec as usize, para as usize)
                     .map_err(|e| e.to_string())?))
             }
             "paragraphCount" => {
                 let sec = number_arg(&args, "sec")?;
                 Ok(json!(session
-                    .core
+                    .ensure_core_loaded()?
                     .get_paragraph_count_native(sec as usize)
                     .map_err(|e| e.to_string())?))
             }
@@ -352,7 +353,7 @@ impl DocumentSessionManager {
                 let text = string_arg(&args, "text")?;
                 Some(parse_json_string(
                     session
-                        .core
+                        .ensure_core_loaded()?
                         .insert_text_native(sec as usize, para as usize, char_offset as usize, text)
                         .map_err(|e| e.to_string())?,
                 )?)
@@ -364,7 +365,7 @@ impl DocumentSessionManager {
                 let count = number_arg(&args, "count")?;
                 Some(parse_json_string(
                     session
-                        .core
+                        .ensure_core_loaded()?
                         .delete_text_native(
                             sec as usize,
                             para as usize,
@@ -380,7 +381,7 @@ impl DocumentSessionManager {
                 let char_offset = number_arg(&args, "charOffset")?;
                 Some(parse_json_string(
                     session
-                        .core
+                        .ensure_core_loaded()?
                         .split_paragraph_native(sec as usize, para as usize, char_offset as usize)
                         .map_err(|e| e.to_string())?,
                 )?)
@@ -390,7 +391,7 @@ impl DocumentSessionManager {
                 let para = number_arg(&args, "para")?;
                 Some(parse_json_string(
                     session
-                        .core
+                        .ensure_core_loaded()?
                         .merge_paragraph_native(sec as usize, para as usize)
                         .map_err(|e| e.to_string())?,
                 )?)
@@ -399,11 +400,12 @@ impl DocumentSessionManager {
         };
         session.dirty = true;
         session.revision += 1;
+        session.page_count = session.ensure_core_loaded()?.page_count();
         session.page_svg_cache.clear();
         Ok(MutationResult {
             doc_id: session.doc_id.clone(),
             revision: session.revision,
-            page_count: session.core.page_count(),
+            page_count: session.page_count,
             dirty: session.dirty,
             cursor,
             warnings: Vec::new(),
@@ -416,7 +418,7 @@ impl DocumentSessionManager {
             .ok_or_else(|| format!("문서 세션을 찾을 수 없습니다: {}", doc_id))
     }
 
-    fn session_mut(&mut self, doc_id: &str) -> Result<&mut DocumentSession, String> {
+    pub(crate) fn session_mut(&mut self, doc_id: &str) -> Result<&mut DocumentSession, String> {
         self.sessions
             .get_mut(doc_id)
             .ok_or_else(|| format!("문서 세션을 찾을 수 없습니다: {}", doc_id))
@@ -433,11 +435,28 @@ impl DocumentSession {
                 .as_ref()
                 .map(|path| path.to_string_lossy().to_string()),
             format: self.source_format,
-            page_count: self.core.page_count(),
+            page_count: self.page_count,
             revision: self.revision,
             dirty: self.dirty,
             warnings: Vec::new(),
         }
+    }
+
+    pub(crate) fn ensure_core_loaded(&mut self) -> Result<&mut DocumentCore, String> {
+        if self.core.is_none() {
+            let source_path = self
+                .source_path
+                .as_ref()
+                .ok_or_else(|| "네이티브 문서 코어를 사용할 수 없습니다".to_string())?;
+            let bytes = std::fs::read(source_path).map_err(|e| {
+                format!("문서를 읽을 수 없습니다: {} ({})", source_path.display(), e)
+            })?;
+            let core =
+                editable_core_from_bytes(&bytes, "문서 파싱 실패", "편집 가능 문서 변환 실패")?;
+            self.page_count = core.page_count();
+            self.core = Some(core);
+        }
+        Ok(self.core.as_mut().expect("core must be loaded"))
     }
 
     fn check_revision(&self, expected_revision: Option<u64>) -> Result<(), String> {
@@ -552,7 +571,8 @@ impl DocumentSession {
     ) -> Result<(), String> {
         atomic_write(&target_path, bytes)?;
         if let Some(core) = core_override {
-            self.core = core;
+            self.page_count = core.page_count();
+            self.core = Some(core);
         }
         self.source_path = Some(target_path);
         self.source_format = DocumentFormat::Hwp;
@@ -622,43 +642,59 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
 fn file_fingerprint(path: &Path) -> std::io::Result<FileFingerprint> {
     let metadata = std::fs::metadata(path)?;
     let mut file = std::fs::File::open(path)?;
-    let mut hasher = DefaultHasher::new();
-    hash_reader(&mut file, &mut hasher)?;
-    file_fingerprint_from_metadata(metadata, hasher.finish())
+    file_fingerprint_from_metadata(metadata, hash_reader(&mut file)?)
 }
 
 fn file_fingerprint_from_bytes(path: &Path, bytes: &[u8]) -> std::io::Result<FileFingerprint> {
     let metadata = std::fs::metadata(path)?;
-    let mut hasher = DefaultHasher::new();
-    hasher.write(bytes);
-    file_fingerprint_from_metadata(metadata, hasher.finish())
+    file_fingerprint_from_metadata(metadata, hash_bytes(bytes))
 }
 
 fn file_fingerprint_from_metadata(
     metadata: std::fs::Metadata,
-    content_hash: u64,
+    content_hash: u32,
 ) -> std::io::Result<FileFingerprint> {
     let modified = metadata.modified()?;
-    let modified_nanos = modified
+    let modified_millis = modified
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_nanos();
+        .as_millis() as u64;
     Ok(FileFingerprint {
         len: metadata.len(),
-        modified_nanos,
+        modified_millis,
         content_hash,
     })
 }
 
-fn hash_reader(reader: &mut impl Read, hasher: &mut impl Hasher) -> std::io::Result<()> {
+fn hash_reader(reader: &mut impl Read) -> std::io::Result<u32> {
+    let mut hash = fnv1a32_init();
     let mut buffer = [0_u8; 64 * 1024];
     loop {
         let read = reader.read(&mut buffer)?;
         if read == 0 {
-            return Ok(());
+            return Ok(hash);
         }
-        hasher.write(&buffer[..read]);
+        hash = fnv1a32_update(hash, &buffer[..read]);
     }
+}
+
+fn hash_bytes(bytes: &[u8]) -> u32 {
+    fnv1a32_update(fnv1a32_init(), bytes)
+}
+
+const FNV1A32_OFFSET_BASIS: u32 = 0x811C9DC5;
+const FNV1A32_PRIME: u32 = 0x01000193;
+
+fn fnv1a32_init() -> u32 {
+    FNV1A32_OFFSET_BASIS
+}
+
+fn fnv1a32_update(mut hash: u32, bytes: &[u8]) -> u32 {
+    for byte in bytes {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(FNV1A32_PRIME);
+    }
+    hash
 }
 
 fn same_path(left: &Path, right: &Path) -> bool {
@@ -669,6 +705,18 @@ fn same_path(left: &Path, right: &Path) -> bool {
         (Ok(left), Ok(right)) => left == right,
         _ => false,
     }
+}
+
+pub(crate) fn editable_core_from_bytes(
+    bytes: &[u8],
+    parse_context: &str,
+    convert_context: &str,
+) -> Result<DocumentCore, String> {
+    let mut core =
+        DocumentCore::from_bytes(bytes).map_err(|e| format!("{}: {}", parse_context, e))?;
+    core.convert_to_editable_native()
+        .map_err(|e| format!("{}: {}", convert_context, e))?;
+    Ok(core)
 }
 
 pub fn parse_json_string(raw: String) -> Result<Value, String> {
@@ -728,6 +776,75 @@ mod tests {
     }
 
     #[test]
+    fn open_document_tracking_creates_metadata_only_session() {
+        let mut manager = DocumentSessionManager::default();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tracked.hwp");
+        atomic_write(&path, b"tracked bytes").unwrap();
+
+        let result = manager.open_document_tracking(path.clone(), None).unwrap();
+        let session = manager.session(&result.doc_id).unwrap();
+
+        assert_eq!(
+            result.source_path.as_deref(),
+            Some(path.to_string_lossy().as_ref())
+        );
+        assert_eq!(result.page_count, 0);
+        assert!(session.core.is_none());
+        assert!(session.source_fingerprint.is_some());
+    }
+
+    #[test]
+    fn tracked_session_loads_core_on_first_query() {
+        let mut manager = DocumentSessionManager::default();
+        let opened = manager.create_document().unwrap();
+        let bytes = manager
+            .session(&opened.doc_id)
+            .unwrap()
+            .core
+            .as_ref()
+            .unwrap()
+            .export_hwp_native()
+            .unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tracked.hwp");
+        atomic_write(&path, &bytes).unwrap();
+
+        let tracked = manager.open_document_tracking(path, None).unwrap();
+        assert!(manager.session(&tracked.doc_id).unwrap().core.is_none());
+
+        let page_count = manager
+            .query_document(&tracked.doc_id, "pageCount", json!({}))
+            .unwrap();
+
+        assert_eq!(page_count, json!(1));
+        assert!(manager.session(&tracked.doc_id).unwrap().core.is_some());
+    }
+
+    #[test]
+    fn open_document_tracking_keeps_loaded_fingerprint_when_provided() {
+        let mut manager = DocumentSessionManager::default();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tracked.hwp");
+        atomic_write(&path, b"tracked bytes").unwrap();
+        let fingerprint = FileFingerprint {
+            len: 12,
+            modified_millis: 34,
+            content_hash: 56,
+        };
+
+        let result = manager
+            .open_document_tracking(path, Some(fingerprint.clone()))
+            .unwrap();
+
+        assert_eq!(
+            manager.session(&result.doc_id).unwrap().source_fingerprint,
+            Some(fingerprint)
+        );
+    }
+
+    #[test]
     fn byte_and_stream_fingerprints_match_for_large_files() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("large.hwp");
@@ -753,7 +870,8 @@ mod tests {
             source_fingerprint: Some(file_fingerprint(&path).unwrap()),
             dirty: false,
             revision: 1,
-            core: DocumentCore::new_empty(),
+            page_count: 0,
+            core: Some(DocumentCore::new_empty()),
             page_svg_cache: HashMap::new(),
         };
 
@@ -790,7 +908,8 @@ mod tests {
             source_fingerprint: Some(file_fingerprint(&source_path).unwrap()),
             dirty: false,
             revision: 1,
-            core: DocumentCore::new_empty(),
+            page_count: 0,
+            core: Some(DocumentCore::new_empty()),
             page_svg_cache: HashMap::new(),
         };
 
@@ -816,7 +935,8 @@ mod tests {
             source_fingerprint: Some(file_fingerprint(&path).unwrap()),
             dirty: false,
             revision: 1,
-            core: DocumentCore::new_empty(),
+            page_count: 0,
+            core: Some(DocumentCore::new_empty()),
             page_svg_cache: HashMap::new(),
         };
 
@@ -863,6 +983,8 @@ mod tests {
             .session(&opened.doc_id)
             .unwrap()
             .core
+            .as_ref()
+            .unwrap()
             .export_hwp_native()
             .unwrap();
         std::fs::write(&staged_path, &bytes).unwrap();

@@ -1,6 +1,8 @@
 import { WasmBridge } from '@/core/wasm-bridge';
 import type { DocumentInfo } from '@/core/types';
-import { remove, writeFile } from '@tauri-apps/plugin-fs';
+import { open as openFs, remove, stat } from '@tauri-apps/plugin-fs';
+
+const FILE_IO_CHUNK_SIZE = 4 * 1024 * 1024;
 
 type DocumentFormat = 'hwp' | 'hwpx';
 
@@ -15,9 +17,10 @@ interface NativeOpenResult {
   warnings: unknown[];
 }
 
-interface NativeOpenWithBytesResult {
-  document: NativeOpenResult;
-  bytes: number[];
+interface SourceFingerprint {
+  len: number;
+  modifiedMillis: number;
+  contentHash: number;
 }
 
 interface ExternalModificationStatus {
@@ -103,18 +106,22 @@ export class TauriBridge extends WasmBridge implements DesktopBridgeApi {
   async openDocumentByPath(path: string): Promise<DesktopLoadPayload | null> {
     if (!(await this.confirmReadyForDocumentReplacement())) return null;
 
-    const result = await this.invoke<NativeOpenWithBytesResult>('open_document_with_bytes', { path });
+    const { bytes, sourceFingerprint } = await this.readFileForOpen(path);
+    const result = await this.invoke<NativeOpenResult>('open_document_tracking', {
+      path,
+      sourceFingerprint,
+    });
     const previousDocId = this.docId;
     try {
-      const info = super.loadDocument(new Uint8Array(result.bytes), result.document.fileName);
-      this.applyNativeOpenResult(result.document);
-      await this.closeReplacedDocument(previousDocId, result.document.docId);
+      const info = super.loadDocument(bytes, result.fileName);
+      this.applyNativeOpenResult(result);
+      await this.closeReplacedDocument(previousDocId, result.docId);
       return {
         docInfo: info,
-        message: `${result.document.fileName} — ${info.pageCount}페이지`,
+        message: `${result.fileName} — ${info.pageCount}페이지`,
       };
     } catch (error) {
-      await this.closeNativeDocument(result.document.docId);
+      await this.closeNativeDocument(result.docId);
       throw error;
     }
   }
@@ -168,12 +175,21 @@ export class TauriBridge extends WasmBridge implements DesktopBridgeApi {
     this.ensureDocumentLoaded();
     const targetPath = await this.selectSavePath(this.suggestedPdfName(), 'PDF 문서', ['pdf']);
     if (!targetPath) return null;
-    return this.invoke<string>('export_pdf_from_hwp_bytes', {
-      bytes: this.currentHwpBytes(),
-      targetPath: this.withExtension(targetPath, 'pdf'),
-      pageRange: null,
-      openAfter: true,
+    const finalPath = this.withExtension(targetPath, 'pdf');
+    const stagedPath = await this.invoke<string>('prepare_staged_hwp_pdf_export', {
+      targetPath: finalPath,
     });
+    try {
+      await this.writeCurrentHwpToPath(stagedPath);
+      return await this.invoke<string>('export_pdf_from_hwp_path', {
+        stagedPath,
+        targetPath: finalPath,
+        pageRange: null,
+        openAfter: true,
+      });
+    } finally {
+      await remove(stagedPath).catch(() => undefined);
+    }
   }
 
   async printCurrentWebview(): Promise<void> {
@@ -282,8 +298,7 @@ export class TauriBridge extends WasmBridge implements DesktopBridgeApi {
 
     const stagedPath = await this.invoke<string>('prepare_staged_hwp_save', { targetPath: finalPath });
     try {
-      const bytes = super.exportHwp();
-      await writeFile(stagedPath, bytes);
+      await this.writeCurrentHwpToPath(stagedPath);
       const result = await this.invoke<DesktopSaveResult>('commit_staged_hwp_save', {
         docId,
         stagedPath,
@@ -388,13 +403,129 @@ export class TauriBridge extends WasmBridge implements DesktopBridgeApi {
     });
   }
 
+  private async writeCurrentHwpToPath(path: string): Promise<void> {
+    await this.writeFileInChunks(path, super.exportHwp());
+  }
+
   private withExtension(path: string, extension: string): string {
     const escaped = extension.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp(`\\.${escaped}$`, 'i').test(path) ? path : `${path}.${extension}`;
   }
 
-  private currentHwpBytes(): number[] {
-    return Array.from(super.exportHwp());
+  private async readFileForOpen(path: string): Promise<{
+    bytes: Uint8Array;
+    sourceFingerprint?: SourceFingerprint;
+  }> {
+    const before = await stat(path);
+    const { bytes, contentHash } = await this.readFileInChunks(path, this.finiteFileSize(before.size));
+    const after = await stat(path);
+    const beforeFingerprint = this.statFingerprint(before);
+    const afterFingerprint = this.statFingerprint(after);
+    if (
+      beforeFingerprint &&
+      afterFingerprint &&
+      (beforeFingerprint.len !== afterFingerprint.len ||
+        beforeFingerprint.modifiedMillis !== afterFingerprint.modifiedMillis)
+    ) {
+      throw new Error('파일을 읽는 중 변경되었습니다. 다시 시도하세요.');
+    }
+    return {
+      bytes,
+      sourceFingerprint: afterFingerprint
+        ? {
+            ...afterFingerprint,
+            contentHash,
+          }
+        : undefined,
+    };
+  }
+
+  private async readFileInChunks(
+    path: string,
+    knownSize?: number,
+  ): Promise<{ bytes: Uint8Array; contentHash: number }> {
+    const file = await openFs(path, { read: true });
+    try {
+      if (typeof knownSize === 'number') {
+        const bytes = new Uint8Array(knownSize);
+        let hash = this.hashInit();
+        let offset = 0;
+        while (offset < bytes.byteLength) {
+          const chunk = bytes.subarray(offset, offset + FILE_IO_CHUNK_SIZE);
+          const read = await file.read(chunk);
+          if (read === null) break;
+          hash = this.hashUpdate(hash, chunk.subarray(0, read));
+          offset += read;
+        }
+        const finalBytes = offset === bytes.byteLength ? bytes : bytes.slice(0, offset);
+        return { bytes: finalBytes, contentHash: hash >>> 0 };
+      }
+
+      const chunks: Uint8Array[] = [];
+      let hash = this.hashInit();
+      let totalSize = 0;
+      while (true) {
+        const buffer = new Uint8Array(FILE_IO_CHUNK_SIZE);
+        const read = await file.read(buffer);
+        if (read === null) break;
+        const chunk = buffer.slice(0, read);
+        hash = this.hashUpdate(hash, chunk);
+        chunks.push(chunk);
+        totalSize += chunk.byteLength;
+      }
+
+      const bytes = new Uint8Array(totalSize);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return { bytes, contentHash: hash >>> 0 };
+    } finally {
+      await file.close();
+    }
+  }
+
+  private async writeFileInChunks(path: string, bytes: Uint8Array): Promise<void> {
+    const file = await openFs(path, { write: true, create: true, truncate: true });
+    try {
+      for (let offset = 0; offset < bytes.byteLength; offset += FILE_IO_CHUNK_SIZE) {
+        await file.write(bytes.subarray(offset, offset + FILE_IO_CHUNK_SIZE));
+      }
+    } finally {
+      await file.close();
+    }
+  }
+
+  private finiteFileSize(size: number | null | undefined): number | undefined {
+    return typeof size === 'number' && Number.isFinite(size) && size >= 0 ? size : undefined;
+  }
+
+  private statFingerprint(
+    info: Partial<{
+      size: number;
+      mtime: Date | null;
+    }>,
+  ): Pick<SourceFingerprint, 'len' | 'modifiedMillis'> | undefined {
+    const size = this.finiteFileSize(info.size);
+    const modifiedMillis = info.mtime instanceof Date ? info.mtime.getTime() : undefined;
+    if (size === undefined || modifiedMillis === undefined || !Number.isFinite(modifiedMillis)) {
+      return undefined;
+    }
+    return { len: size, modifiedMillis };
+  }
+
+  private hashInit(): number {
+    return 0x811c9dc5;
+  }
+
+  private hashUpdate(hash: number, bytes: Uint8Array): number {
+    let next = hash;
+    for (let index = 0; index < bytes.byteLength; index += 1) {
+      next ^= bytes[index] ?? 0;
+      next = Math.imul(next, 0x01000193);
+    }
+    return next;
   }
 
   private applyNativeOpenResult(result: NativeOpenResult): void {

@@ -40,7 +40,7 @@ pub fn export_core_to_pdf(
     Ok(total)
 }
 
-fn ensure_pdf_path(path: &Path) -> Result<(), String> {
+pub(crate) fn ensure_pdf_path(path: &Path) -> Result<(), String> {
     if path
         .extension()
         .and_then(|ext| ext.to_str())

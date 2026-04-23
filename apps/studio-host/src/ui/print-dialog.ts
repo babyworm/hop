@@ -22,25 +22,23 @@ export async function openPrintDialog(
   const pageCount = document.pageCount;
   if (pageCount === 0) return;
 
-  const svgPages: string[] = [];
-  for (let i = 0; i < pageCount; i += 1) {
-    const message = `인쇄 준비 중... (${i + 1}/${pageCount})`;
-    options.onStatus?.(message);
-    svgPages.push(document.renderPageSvg(i));
-    if (i % 5 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
-  }
-
   const pageInfo = document.getPageInfo(0);
   const widthMm = Math.round((pageInfo.width * 25.4) / 96);
   const heightMm = Math.round((pageInfo.height * 25.4) / 96);
 
-  renderPrintDocument({
+  const root = renderPrintDocumentShell({
     fileName: document.fileName,
     pageCount,
-    svgPages,
     widthMm,
     heightMm,
   });
+  for (let i = 0; i < pageCount; i += 1) {
+    options.onStatus?.(`인쇄 준비 중... (${i + 1}/${pageCount})`);
+    appendPrintPage(root, document.renderPageSvg(i));
+    if ((i + 1) % 5 === 0 && i + 1 < pageCount) {
+      await nextTask();
+    }
+  }
 
   options.onStatus?.('인쇄 대화상자를 여는 중...');
   await nextFrame();
@@ -65,13 +63,12 @@ export async function openPrintDialog(
   }
 }
 
-function renderPrintDocument(payload: {
+function renderPrintDocumentShell(payload: {
   fileName: string;
   pageCount: number;
-  svgPages: string[];
   widthMm: number;
   heightMm: number;
-}): void {
+}): HTMLElement {
   removePrintDocument();
 
   const style = document.createElement('style');
@@ -127,16 +124,18 @@ function renderPrintDocument(payload: {
   root.setAttribute('aria-hidden', 'true');
   root.dataset.fileName = payload.fileName;
   root.dataset.pageCount = String(payload.pageCount);
-  for (const svg of payload.svgPages) {
-    const page = document.createElement('div');
-    page.className = 'hop-print-page';
-    const svgNode = parsePrintableSvg(svg);
-    if (svgNode) page.appendChild(svgNode);
-    root.appendChild(page);
-  }
 
   document.head.appendChild(style);
   document.body.appendChild(root);
+  return root;
+}
+
+function appendPrintPage(root: HTMLElement, svg: string): void {
+  const page = document.createElement('div');
+  page.className = 'hop-print-page';
+  const svgNode = parsePrintableSvg(svg);
+  if (svgNode) page.appendChild(svgNode);
+  root.appendChild(page);
 }
 
 function parsePrintableSvg(svg: string): SVGSVGElement | null {
@@ -187,4 +186,8 @@ function removePrintDocument(): void {
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function nextTask(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }

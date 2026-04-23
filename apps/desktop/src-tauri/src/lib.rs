@@ -19,9 +19,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use commands::{
     cancel_app_quit, check_external_modification, close_document, commit_staged_hwp_save,
     create_document, create_editor_window, desktop_platform, destroy_current_window, export_pdf,
-    export_pdf_from_hwp_bytes, mark_document_dirty, mutate_document, open_document_with_bytes,
-    prepare_staged_hwp_save, print_webview, query_document, render_page_svg, reveal_in_folder,
-    take_pending_open_paths,
+    export_pdf_from_hwp_path, mark_document_dirty, mutate_document, open_document_tracking,
+    prepare_staged_hwp_pdf_export, prepare_staged_hwp_save, print_webview, query_document,
+    render_page_svg, reveal_in_folder, take_pending_open_paths,
 };
 use state::AppState;
 use updates::{get_update_state, restart_to_apply_update, start_update_install};
@@ -67,12 +67,13 @@ pub fn run() {
             query_document,
             mutate_document,
             export_pdf,
-            export_pdf_from_hwp_bytes,
+            export_pdf_from_hwp_path,
             print_webview,
             destroy_current_window,
             cancel_app_quit,
             desktop_platform,
-            open_document_with_bytes,
+            open_document_tracking,
+            prepare_staged_hwp_pdf_export,
             prepare_staged_hwp_save,
             commit_staged_hwp_save,
             check_external_modification,

@@ -1,6 +1,6 @@
 use crate::state::{
-    AppState, DocumentFormat, DocumentOpenResult, ExternalModificationStatus, MutationResult,
-    PageSvgResult, SaveResult,
+    editable_core_from_bytes, AppState, DocumentFormat, DocumentOpenResult,
+    ExternalModificationStatus, FileFingerprint, MutationResult, PageSvgResult, SaveResult,
 };
 use rhwp::DocumentCore;
 use serde::{Deserialize, Serialize};
@@ -27,13 +27,6 @@ pub struct JobProgress {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DocumentOpenWithBytesResult {
-    pub document: DocumentOpenResult,
-    pub bytes: Vec<u8>,
-}
-
 #[tauri::command]
 pub fn create_document(state: State<'_, AppState>) -> Result<DocumentOpenResult, String> {
     state
@@ -44,20 +37,16 @@ pub fn create_document(state: State<'_, AppState>) -> Result<DocumentOpenResult,
 }
 
 #[tauri::command]
-pub fn open_document_with_bytes(
+pub fn open_document_tracking(
     path: String,
+    source_fingerprint: Option<FileFingerprint>,
     state: State<'_, AppState>,
-) -> Result<DocumentOpenWithBytesResult, String> {
-    let path_buf = PathBuf::from(&path);
-    DocumentFormat::from_path(&path_buf)?;
-    let bytes = std::fs::read(&path_buf)
-        .map_err(|e| format!("파일을 읽을 수 없습니다: {} ({})", path_buf.display(), e))?;
-    let document = state
+) -> Result<DocumentOpenResult, String> {
+    state
         .sessions
         .lock()
         .map_err(|_| "문서 세션 잠금 실패".to_string())?
-        .open_document_from_bytes(path_buf, &bytes)?;
-    Ok(DocumentOpenWithBytesResult { document, bytes })
+        .open_document_tracking(PathBuf::from(path), source_fingerprint)
 }
 
 #[tauri::command]
@@ -89,11 +78,20 @@ pub fn mark_document_dirty(doc_id: String, state: State<'_, AppState>) -> Result
 
 #[tauri::command]
 pub fn prepare_staged_hwp_save(app: AppHandle, target_path: String) -> Result<String, String> {
-    let target_path = PathBuf::from(target_path);
-    ensure_hwp_target_path(&target_path)?;
-    let staged_path = staged_hwp_save_path(&target_path)?;
-    allow_frontend_fs_file(&app, &staged_path)?;
-    Ok(staged_path.to_string_lossy().to_string())
+    prepare_staged_file(&app, PathBuf::from(target_path), ensure_hwp_target_path, staged_hwp_save_path)
+}
+
+#[tauri::command]
+pub fn prepare_staged_hwp_pdf_export(
+    app: AppHandle,
+    target_path: String,
+) -> Result<String, String> {
+    prepare_staged_file(
+        &app,
+        PathBuf::from(target_path),
+        ensure_pdf_target_path,
+        staged_hwp_pdf_export_path,
+    )
 }
 
 #[tauri::command]
@@ -153,11 +151,11 @@ pub fn query_document(
     args: Value,
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
-    state
+    let mut sessions = state
         .sessions
         .lock()
-        .map_err(|_| "문서 세션 잠금 실패".to_string())?
-        .query_document(&doc_id, &query, args)
+        .map_err(|_| "문서 세션 잠금 실패".to_string())?;
+    sessions.query_document(&doc_id, &query, args)
 }
 
 #[tauri::command]
@@ -186,36 +184,39 @@ pub fn export_pdf(
 ) -> Result<String, String> {
     let job_id = Uuid::new_v4().to_string();
 
-    let sessions = state
+    let mut sessions = state
         .sessions
         .lock()
         .map_err(|_| "문서 세션 잠금 실패".to_string())?;
-    let session = sessions.session(&doc_id)?;
-    export_pdf_from_core(
-        &app,
-        &job_id,
-        &session.core,
-        target_path,
-        page_range,
-        open_after,
-    )?;
+    let session = sessions.session_mut(&doc_id)?;
+    let core = session.ensure_core_loaded()?;
+    export_pdf_from_core(&app, &job_id, core, target_path, page_range, open_after)?;
     Ok(job_id)
 }
 
 #[tauri::command]
-pub fn export_pdf_from_hwp_bytes(
+pub fn export_pdf_from_hwp_path(
     app: AppHandle,
-    bytes: Vec<u8>,
+    staged_path: String,
     target_path: String,
     page_range: Option<PageRange>,
     open_after: bool,
 ) -> Result<String, String> {
     let job_id = Uuid::new_v4().to_string();
 
-    let mut core =
-        DocumentCore::from_bytes(&bytes).map_err(|e| format!("문서 바이트 파싱 실패: {}", e))?;
-    core.convert_to_editable_native()
-        .map_err(|e| format!("PDF 내보내기용 문서 변환 실패: {}", e))?;
+    let staged_path = PathBuf::from(staged_path);
+    let bytes = std::fs::read(&staged_path).map_err(|e| {
+        format!(
+            "PDF 내보내기용 staging 파일을 읽을 수 없습니다: {} ({})",
+            staged_path.display(),
+            e
+        )
+    })?;
+    let core = editable_core_from_bytes(
+        &bytes,
+        "문서 바이트 파싱 실패",
+        "PDF 내보내기용 문서 변환 실패",
+    )?;
     export_pdf_from_core(&app, &job_id, &core, target_path, page_range, open_after)?;
     Ok(job_id)
 }
@@ -278,22 +279,20 @@ fn allow_frontend_fs_file(app: &AppHandle, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn prepare_staged_file(
+    app: &AppHandle,
+    target_path: PathBuf,
+    validate_target: fn(&Path) -> Result<(), String>,
+    build_staged_path: fn(&Path) -> Result<PathBuf, String>,
+) -> Result<String, String> {
+    validate_target(&target_path)?;
+    let staged_path = build_staged_path(&target_path)?;
+    allow_frontend_fs_file(app, &staged_path)?;
+    Ok(staged_path.to_string_lossy().to_string())
+}
+
 fn ensure_hwp_target_path(path: &Path) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .ok_or_else(|| {
-            format!(
-                "저장 경로의 상위 디렉터리를 찾을 수 없습니다: {}",
-                path.display()
-            )
-        })?;
-    if !parent.is_dir() {
-        return Err(format!(
-            "저장 경로의 상위 디렉터리가 유효하지 않습니다: {}",
-            parent.display()
-        ));
-    }
+    ensure_target_parent(path, "저장 경로")?;
     let format = DocumentFormat::from_path(path)?;
     if format == DocumentFormat::Hwpx {
         return Err(
@@ -304,6 +303,40 @@ fn ensure_hwp_target_path(path: &Path) -> Result<(), String> {
 }
 
 fn staged_hwp_save_path(target_path: &Path) -> Result<PathBuf, String> {
+    staged_sibling_path(target_path, ".hop-save-", ".tmp")
+}
+
+fn ensure_pdf_target_path(path: &Path) -> Result<(), String> {
+    ensure_target_parent(path, "PDF 경로")?;
+    crate::pdf_export::ensure_pdf_path(path)
+}
+
+fn staged_hwp_pdf_export_path(target_path: &Path) -> Result<PathBuf, String> {
+    staged_sibling_path(target_path, ".hop-export-", ".hwp")
+}
+
+fn ensure_target_parent(path: &Path, context: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .ok_or_else(|| {
+            format!(
+                "{}의 상위 디렉터리를 찾을 수 없습니다: {}",
+                context,
+                path.display()
+            )
+        })?;
+    if !parent.is_dir() {
+        return Err(format!(
+            "{}의 상위 디렉터리가 유효하지 않습니다: {}",
+            context,
+            parent.display()
+        ));
+    }
+    Ok(())
+}
+
+fn staged_sibling_path(target_path: &Path, marker: &str, suffix: &str) -> Result<PathBuf, String> {
     let file_name = target_path.file_name().ok_or_else(|| {
         format!(
             "저장 경로의 파일 이름을 찾을 수 없습니다: {}",
@@ -311,7 +344,7 @@ fn staged_hwp_save_path(target_path: &Path) -> Result<PathBuf, String> {
         )
     })?;
     let mut staged_name = file_name.to_os_string();
-    staged_name.push(format!(".hop-save-{}.tmp", Uuid::new_v4().simple()));
+    staged_name.push(format!("{}{}{}", marker, Uuid::new_v4().simple(), suffix));
     Ok(target_path.with_file_name(staged_name))
 }
 
@@ -414,5 +447,27 @@ mod tests {
             .unwrap()
             .to_string_lossy()
             .ends_with(".tmp"));
+    }
+
+    #[test]
+    fn staged_hwp_pdf_export_path_uses_hwp_sibling_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let target_path = dir.path().join("export.pdf");
+
+        let staged_path = staged_hwp_pdf_export_path(&target_path).unwrap();
+
+        assert_eq!(staged_path.parent(), target_path.parent());
+        assert_ne!(staged_path, target_path);
+        assert!(staged_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("export.pdf.hop-export-"));
+        assert_eq!(
+            staged_path
+                .extension()
+                .and_then(|extension| extension.to_str()),
+            Some("hwp")
+        );
     }
 }
