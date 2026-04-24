@@ -14,7 +14,7 @@ Tauri 데스크톱 앱은 `apps/desktop/`에서 빌드한다. 배포용 GitHub A
 
 | 트리거 | 빌드 플랫폼 | 릴리즈 |
 | --- | --- | --- |
-| 데스크톱/에디터 코드, root pnpm 의존성, 번들 폰트/로고, 관련 문서, upstream submodule pointer를 건드린 Pull Request | Linux x64만 | 릴리즈 없음. 스모크 빌드 artifact만 생성 |
+| 데스크톱/에디터 코드, root pnpm 의존성, 번들 폰트/로고, 관련 문서, upstream submodule pointer를 건드린 Pull Request | Linux x64, Windows x64 | 릴리즈 없음. 스모크 빌드 artifact만 생성 |
 | 수동 `workflow_dispatch` | macOS arm64, macOS x64 기본 선택. Windows x64, Linux x64는 필요할 때 선택 | 선택적으로 draft/prerelease 릴리즈 생성 |
 
 태그 push는 자동 빌드를 실행하지 않는다. 릴리즈 빌드는 GitHub Actions에서 수동으로 실행하고, `build_ref`에 빌드할 branch, tag, commit SHA를 입력한다. `create_release`를 켠 상태에서 `build_ref`를 비워 두면 `release_tag`를 빌드 ref로 사용한다. HOP 데스크톱 릴리즈 태그는 `v*` 네임스페이스를 사용한다.
@@ -26,9 +26,11 @@ Tauri 데스크톱 앱은 `apps/desktop/`에서 빌드한다. 배포용 GitHub A
 | macOS arm64 | `macos-15` | `aarch64-apple-darwin` |
 | macOS x64 | `macos-15-intel` | `x86_64-apple-darwin` |
 | Windows x64 | `windows-2025` | `x86_64-pc-windows-msvc` |
-| Linux x64 | `ubuntu-24.04` | `x86_64-unknown-linux-gnu` |
+| Linux x64 | `ubuntu-22.04` | `x86_64-unknown-linux-gnu` |
 
 각 빌드 잡은 Rust, Node, Linux Tauri 의존성을 준비하고, 루트 workspace lockfile 기준으로 Node 의존성을 설치한 뒤 `tauri-apps/tauri-action`으로 번들을 만든다. upstream `rhwp`는 `third_party/rhwp` submodule로 checkout된다.
+
+Linux x64는 Ubuntu 22.04 ABI baseline을 명시적으로 유지한다. workflow는 Linux desktop binary와 AppImage 내부 ELF 파일에서 관찰되는 최대 `GLIBC_*` 심볼 요구 버전을 기록하고, `GLIBC_2.35`를 넘기면 실패한다. AppImage는 같은 runner에서 `--appimage-extract` smoke를 실행해 22.04 기준에서 runtime이 실제로 시작되는지도 함께 확인한다.
 
 릴리즈 생성은 별도 잡에서만 수행한다. 일반 빌드 잡은 `contents: read` 권한만 갖고, GitHub Release를 만들거나 갱신하는 잡만 `contents: write` 권한을 갖는다. Apple, Tauri updater, Windows signing secret은 전체 workflow env에 올리지 않고 필요한 빌드 step에만 전달한다.
 

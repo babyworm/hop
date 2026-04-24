@@ -141,13 +141,13 @@ jobs:
           }
 
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            add_platform "linux-x64" "ubuntu-24.04" "x86_64-unknown-linux-gnu" ""
+            add_platform "linux-x64" "ubuntu-22.04" "x86_64-unknown-linux-gnu" ""
             add_platform "windows-x64" "windows-2025" "x86_64-pc-windows-msvc" ""
           else
             [[ "${{ inputs.macos_arm64 }}" == "true" ]] && add_platform "macos-arm64" "macos-15" "aarch64-apple-darwin" "--target aarch64-apple-darwin"
             [[ "${{ inputs.macos_x64 }}" == "true" ]] && add_platform "macos-x64" "macos-15-intel" "x86_64-apple-darwin" "--target x86_64-apple-darwin"
             [[ "${{ inputs.windows_x64 }}" == "true" ]] && add_platform "windows-x64" "windows-2025" "x86_64-pc-windows-msvc" ""
-            [[ "${{ inputs.linux_x64 }}" == "true" ]] && add_platform "linux-x64" "ubuntu-24.04" "x86_64-unknown-linux-gnu" ""
+            [[ "${{ inputs.linux_x64 }}" == "true" ]] && add_platform "linux-x64" "ubuntu-22.04" "x86_64-unknown-linux-gnu" ""
           fi
 
           count="$(jq '.include | length' <<< "$matrix")"
@@ -504,6 +504,84 @@ jobs:
           tauriScript: pnpm tauri
           args: ${{ steps.tauri-build-args.outputs.args }}
 
+      - name: Verify Linux ABI baseline
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          report_path="$RUNNER_TEMP/linux-abi-${{ matrix.name }}.txt"
+          binary_path=""
+          for candidate in \
+            "apps/desktop/src-tauri/target/${{ matrix.target }}/release/hop-desktop" \
+            "apps/desktop/src-tauri/target/release/hop-desktop"
+          do
+            if [[ -x "$candidate" ]]; then
+              binary_path="$candidate"
+              break
+            fi
+          done
+
+          if [[ -z "$binary_path" ]]; then
+            binary_path="$(find apps/desktop/src-tauri/target -path '*/release/hop-desktop' -type f | head -n 1)"
+          fi
+
+          if [[ -z "$binary_path" ]]; then
+            echo "::error::Unable to locate the Linux desktop binary after build."
+            exit 1
+          fi
+
+          appimage_path="$(find apps/desktop/src-tauri/target -path '*/bundle/appimage/*.AppImage' -type f | head -n 1 || true)"
+          scan_root="$RUNNER_TEMP/linux-abi-scan-${{ matrix.name }}"
+          rm -rf "$scan_root"
+          mkdir -p "$scan_root"
+          cp "$binary_path" "$scan_root/hop-desktop"
+
+          {
+            source /etc/os-release
+            echo "build_os=${PRETTY_NAME:-$NAME $VERSION_ID}"
+            echo "binary_path=$binary_path"
+          } | tee "$report_path"
+
+          if [[ -n "$appimage_path" ]]; then
+            chmod +x "$appimage_path"
+            cp "$appimage_path" "$scan_root/hop.AppImage"
+            "$appimage_path" --appimage-extract >/dev/null
+            mv squashfs-root "$scan_root/appimage-root"
+            {
+              echo "appimage_path=$appimage_path"
+              echo "appimage_extract_smoke=ok"
+            } | tee -a "$report_path"
+          else
+            echo "::warning::No AppImage artifact found for Linux ABI smoke test." | tee -a "$report_path"
+          fi
+
+          mapfile -d '' elf_files < <(find "$scan_root" -type f -print0 | while IFS= read -r -d '' candidate; do
+            if file "$candidate" | grep -q 'ELF'; then
+              printf '%s\0' "$candidate"
+            fi
+          done)
+          if [[ "${#elf_files[@]}" -eq 0 ]]; then
+            echo "::error::Unable to locate ELF files for Linux ABI inspection."
+            exit 1
+          fi
+
+          max_glibc="$(strings "${elf_files[@]}" | grep -o 'GLIBC_[0-9.]*' | sort -V | tail -n 1 || true)"
+          if [[ -z "$max_glibc" ]]; then
+            echo "::error::Unable to determine GLIBC requirements for Linux ELF files."
+            exit 1
+          fi
+
+          {
+            echo "elf_file_count=${#elf_files[@]}"
+            echo "max_glibc=$max_glibc"
+          } | tee -a "$report_path"
+
+          if [[ "$(printf '%s\n%s\n' "GLIBC_2.35" "$max_glibc" | sort -V | tail -n 1)" != "GLIBC_2.35" ]]; then
+            echo "::error::Linux artifacts require newer glibc than the Ubuntu 22.04 baseline: ${max_glibc}"
+            exit 1
+          fi
+
       - name: Collect Tauri artifact paths
         id: tauri-artifacts
         shell: bash
@@ -535,6 +613,10 @@ jobs:
                 -o -name "*.sig" \
                 -o -name "*.blockmap" \
               \)
+            linux_abi_report="$RUNNER_TEMP/linux-abi-${{ matrix.name }}.txt"
+            if [[ -f "$linux_abi_report" ]]; then
+              printf '%s\n' "$linux_abi_report"
+            fi
           } | sed '/^[[:space:]]*$/d' | sort -u > "$artifact_list"
 
           echo "paths<<EOF" >> "$GITHUB_OUTPUT"
