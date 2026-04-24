@@ -21,8 +21,9 @@ use commands::{
     cancel_app_quit, check_external_modification, close_document, commit_staged_hwp_save,
     create_document, create_editor_window, desktop_platform, destroy_current_window, export_pdf,
     export_pdf_from_hwp_path, list_local_fonts, mark_document_dirty, mutate_document,
-    open_document_tracking, prepare_staged_hwp_pdf_export, prepare_staged_hwp_save, print_webview,
-    query_document, read_local_font, render_page_svg, reveal_in_folder, take_pending_open_paths,
+    open_document_tracking, prepare_document_open, prepare_staged_hwp_pdf_export,
+    prepare_staged_hwp_save, print_webview, query_document, read_local_font, render_page_svg,
+    reveal_in_folder, take_pending_open_paths,
 };
 use state::AppState;
 use updates::{get_update_state, restart_to_apply_update, start_update_install};
@@ -75,6 +76,7 @@ pub fn run() {
             desktop_platform,
             list_local_fonts,
             read_local_font,
+            prepare_document_open,
             open_document_tracking,
             prepare_staged_hwp_pdf_export,
             prepare_staged_hwp_save,

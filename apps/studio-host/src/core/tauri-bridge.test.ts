@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { hashBytes } from './chunked-fs';
 import { TauriBridge } from './tauri-bridge';
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -69,6 +70,9 @@ describe('TauriBridge', () => {
 
     const loaded = await bridge.openDocumentByPath('/tmp/opened.hwp');
 
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'prepare_document_open', {
+      path: '/tmp/opened.hwp',
+    });
     expect(fsOpenMock).toHaveBeenCalledWith('/tmp/opened.hwp', { read: true });
     expect(invokeMock).toHaveBeenCalledWith('open_document_tracking', {
       path: '/tmp/opened.hwp',
@@ -123,7 +127,9 @@ describe('TauriBridge', () => {
       '파일을 읽는 중 변경되었습니다. 다시 시도하세요.',
     );
 
-    expect(invokeMock).not.toHaveBeenCalled();
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith('prepare_document_open', { path: '/tmp/changing.hwp' });
+    expect(invokeMock).not.toHaveBeenCalledWith('open_document_tracking', expect.anything());
   });
 
   it('cleans up a newly opened native document when wasm loading fails', async () => {
@@ -133,6 +139,7 @@ describe('TauriBridge', () => {
     });
     fsOpenMock.mockResolvedValue(readHandle([1]));
     invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'prepare_document_open') return undefined;
       if (command === 'open_document_tracking') return nativeOpenResult({ docId: 'doc-bad', fileName: 'bad.hwp' });
       if (command === 'close_document') return undefined;
       throw new Error(`unexpected command ${command}`);
@@ -149,7 +156,9 @@ describe('TauriBridge', () => {
       .mockResolvedValueOnce(readHandle([1]))
       .mockResolvedValueOnce(readHandle([2]));
     invokeMock
+      .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(nativeOpenResult({ docId: 'old-doc', fileName: 'old.hwp' }))
+      .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(nativeOpenResult({ docId: 'new-doc', fileName: 'new.hwp' }))
       .mockResolvedValueOnce(undefined);
 
@@ -553,7 +562,7 @@ function readHandle(bytes: ArrayLike<number>) {
 
 function writeHandle() {
   return {
-    write: vi.fn(async () => undefined),
+    write: vi.fn(async (bytes: Uint8Array) => bytes.byteLength),
     close: vi.fn(async () => undefined),
   };
 }
@@ -576,16 +585,6 @@ function nativeOpenResult(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
-
-function hashBytes(bytes: Uint8Array) {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < bytes.byteLength; index += 1) {
-    hash ^= bytes[index] ?? 0;
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
 
 function getWasmMock(bridge: TauriBridge, name: 'loadDocumentMock' | 'createNewDocumentMock' | 'exportHwpMock') {
   return (bridge as unknown as Record<typeof name, ReturnType<typeof vi.fn>>)[name];

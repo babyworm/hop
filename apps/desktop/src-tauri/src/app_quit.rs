@@ -40,7 +40,8 @@ impl AppQuitState {
         if self.pending_window_labels.front().map(String::as_str) == Some(closed_label) {
             self.pending_window_labels.pop_front();
         } else {
-            self.pending_window_labels.retain(|label| label != closed_label);
+            self.pending_window_labels
+                .retain(|label| label != closed_label);
         }
 
         match self.pending_window_labels.front() {
@@ -145,7 +146,10 @@ mod tests {
             state.begin(vec!["main".to_string(), "main2".to_string()]),
             Some("main".to_string())
         );
-        assert_eq!(state.advance_after_close("main"), QuitAdvance::Next("main2".to_string()));
+        assert_eq!(
+            state.advance_after_close("main"),
+            QuitAdvance::Next("main2".to_string())
+        );
         assert_eq!(state.advance_after_close("main2"), QuitAdvance::Complete);
     }
 
@@ -153,7 +157,10 @@ mod tests {
     fn app_quit_state_ignores_unrelated_closed_windows() {
         let mut state = AppQuitState::default();
         state.begin(vec!["main".to_string()]);
-        assert_eq!(state.advance_after_close("other"), QuitAdvance::Next("main".to_string()));
+        assert_eq!(
+            state.advance_after_close("other"),
+            QuitAdvance::Next("main".to_string())
+        );
         assert!(state.is_in_progress());
     }
 

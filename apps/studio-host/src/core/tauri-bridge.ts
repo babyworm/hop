@@ -1,8 +1,7 @@
 import { WasmBridge } from '@/core/wasm-bridge';
 import type { DocumentInfo } from '@/core/types';
-import { open as openFs, remove, stat } from '@tauri-apps/plugin-fs';
-
-const FILE_IO_CHUNK_SIZE = 4 * 1024 * 1024;
+import { remove, stat } from '@tauri-apps/plugin-fs';
+import { finiteFileSize, readFileInChunks, writeFileInChunks } from './chunked-fs';
 
 type DocumentFormat = 'hwp' | 'hwpx';
 
@@ -106,6 +105,7 @@ export class TauriBridge extends WasmBridge implements DesktopBridgeApi {
   async openDocumentByPath(path: string): Promise<DesktopLoadPayload | null> {
     if (!(await this.confirmReadyForDocumentReplacement())) return null;
 
+    await this.invoke<void>('prepare_document_open', { path });
     const { bytes, sourceFingerprint } = await this.readFileForOpen(path);
     const result = await this.invoke<NativeOpenResult>('open_document_tracking', {
       path,
@@ -404,7 +404,7 @@ export class TauriBridge extends WasmBridge implements DesktopBridgeApi {
   }
 
   private async writeCurrentHwpToPath(path: string): Promise<void> {
-    await this.writeFileInChunks(path, super.exportHwp());
+    await writeFileInChunks(path, super.exportHwp());
   }
 
   private withExtension(path: string, extension: string): string {
@@ -417,7 +417,7 @@ export class TauriBridge extends WasmBridge implements DesktopBridgeApi {
     sourceFingerprint?: SourceFingerprint;
   }> {
     const before = await stat(path);
-    const { bytes, contentHash } = await this.readFileInChunks(path, this.finiteFileSize(before.size));
+    const { bytes, contentHash } = await readFileInChunks(path, finiteFileSize(before.size));
     const after = await stat(path);
     const beforeFingerprint = this.statFingerprint(before);
     const afterFingerprint = this.statFingerprint(after);
@@ -440,97 +440,18 @@ export class TauriBridge extends WasmBridge implements DesktopBridgeApi {
     };
   }
 
-  private async readFileInChunks(
-    path: string,
-    knownSize?: number,
-  ): Promise<{ bytes: Uint8Array; contentHash: number }> {
-    const file = await openFs(path, { read: true });
-    try {
-      if (typeof knownSize === 'number') {
-        const bytes = new Uint8Array(knownSize);
-        let hash = this.hashInit();
-        let offset = 0;
-        while (offset < bytes.byteLength) {
-          const chunk = bytes.subarray(offset, offset + FILE_IO_CHUNK_SIZE);
-          const read = await file.read(chunk);
-          if (read === null) break;
-          hash = this.hashUpdate(hash, chunk.subarray(0, read));
-          offset += read;
-        }
-        const finalBytes = offset === bytes.byteLength ? bytes : bytes.slice(0, offset);
-        return { bytes: finalBytes, contentHash: hash >>> 0 };
-      }
-
-      const chunks: Uint8Array[] = [];
-      let hash = this.hashInit();
-      let totalSize = 0;
-      while (true) {
-        const buffer = new Uint8Array(FILE_IO_CHUNK_SIZE);
-        const read = await file.read(buffer);
-        if (read === null) break;
-        const chunk = buffer.slice(0, read);
-        hash = this.hashUpdate(hash, chunk);
-        chunks.push(chunk);
-        totalSize += chunk.byteLength;
-      }
-
-      const bytes = new Uint8Array(totalSize);
-      let offset = 0;
-      for (const chunk of chunks) {
-        bytes.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-      return { bytes, contentHash: hash >>> 0 };
-    } finally {
-      await file.close();
-    }
-  }
-
-  private async writeFileInChunks(path: string, bytes: Uint8Array): Promise<void> {
-    const file = await openFs(path, { write: true, create: true, truncate: true });
-    try {
-      for (let offset = 0; offset < bytes.byteLength; offset += FILE_IO_CHUNK_SIZE) {
-        await file.write(bytes.subarray(offset, offset + FILE_IO_CHUNK_SIZE));
-      }
-    } finally {
-      await file.close();
-    }
-
-    const written = await stat(path);
-    if (this.finiteFileSize(written.size) !== bytes.byteLength) {
-      throw new Error(`staging 파일 크기 검증 실패: expected ${bytes.byteLength}, got ${written.size ?? 'unknown'}`);
-    }
-  }
-
-  private finiteFileSize(size: number | null | undefined): number | undefined {
-    return typeof size === 'number' && Number.isFinite(size) && size >= 0 ? size : undefined;
-  }
-
   private statFingerprint(
     info: Partial<{
       size: number;
       mtime: Date | null;
     }>,
   ): Pick<SourceFingerprint, 'len' | 'modifiedMillis'> | undefined {
-    const size = this.finiteFileSize(info.size);
+    const size = finiteFileSize(info.size);
     const modifiedMillis = info.mtime instanceof Date ? info.mtime.getTime() : undefined;
     if (size === undefined || modifiedMillis === undefined || !Number.isFinite(modifiedMillis)) {
       return undefined;
     }
     return { len: size, modifiedMillis };
-  }
-
-  private hashInit(): number {
-    return 0x811c9dc5;
-  }
-
-  private hashUpdate(hash: number, bytes: Uint8Array): number {
-    let next = hash;
-    for (let index = 0; index < bytes.byteLength; index += 1) {
-      next ^= bytes[index] ?? 0;
-      next = Math.imul(next, 0x01000193);
-    }
-    return next;
   }
 
   private applyNativeOpenResult(result: NativeOpenResult): void {

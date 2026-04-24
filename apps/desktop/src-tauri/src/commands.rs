@@ -60,6 +60,13 @@ pub fn take_pending_open_paths(state: State<'_, AppState>) -> Result<Vec<String>
 }
 
 #[tauri::command]
+pub fn prepare_document_open(app: AppHandle, path: String) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    ensure_document_open_path(&path)?;
+    allow_frontend_fs_file(&app, &path)
+}
+
+#[tauri::command]
 pub fn close_document(doc_id: String, state: State<'_, AppState>) -> Result<(), String> {
     state
         .sessions
@@ -307,6 +314,14 @@ fn prepare_staged_file(
     Ok(staged_path.to_string_lossy().to_string())
 }
 
+fn ensure_document_open_path(path: &Path) -> Result<(), String> {
+    DocumentFormat::from_path(path)?;
+    if !path.is_file() {
+        return Err(format!("문서 파일을 찾을 수 없습니다: {}", path.display()));
+    }
+    Ok(())
+}
+
 fn ensure_hwp_target_path(path: &Path) -> Result<(), String> {
     ensure_target_parent(path, "저장 경로")?;
     let format = DocumentFormat::from_path(path)?;
@@ -433,6 +448,28 @@ mod tests {
         let path = dir.path().join("saved.hwp");
 
         assert!(ensure_hwp_target_path(&path).is_ok());
+    }
+
+    #[test]
+    fn ensure_document_open_path_accepts_existing_hwp_and_hwpx_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let hwp = dir.path().join("source.hwp");
+        let hwpx = dir.path().join("source.hwpx");
+        std::fs::write(&hwp, b"hwp").unwrap();
+        std::fs::write(&hwpx, b"hwpx").unwrap();
+
+        assert!(ensure_document_open_path(&hwp).is_ok());
+        assert!(ensure_document_open_path(&hwpx).is_ok());
+    }
+
+    #[test]
+    fn ensure_document_open_path_rejects_missing_and_unsupported_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let txt = dir.path().join("source.txt");
+        std::fs::write(&txt, b"text").unwrap();
+
+        assert!(ensure_document_open_path(&dir.path().join("missing.hwp")).is_err());
+        assert!(ensure_document_open_path(&txt).is_err());
     }
 
     #[test]
