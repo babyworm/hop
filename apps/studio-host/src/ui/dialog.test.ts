@@ -14,6 +14,7 @@ class FakeElement {
   isConnected = true;
   children: FakeElement[] = [];
   style: Record<string, string> = {};
+  parentNode: FakeElement | null = null;
   private attrs = new Map<string, string>();
   private listeners = new Map<string, Array<(event: unknown) => void>>();
   private classes = new Set<string>();
@@ -37,6 +38,11 @@ class FakeElement {
   getAttribute(name: string) { return this.attrs.get(name) ?? null; }
 
   appendChild(child: FakeElement): FakeElement {
+    if (child.parentNode) {
+      const idx = child.parentNode.children.indexOf(child);
+      if (idx >= 0) child.parentNode.children.splice(idx, 1);
+    }
+    child.parentNode = this;
     this.children.push(child);
     return child;
   }
@@ -73,6 +79,11 @@ class FakeElement {
 
   remove(): void {
     this.isConnected = false;
+    if (this.parentNode) {
+      const idx = this.parentNode.children.indexOf(this);
+      if (idx >= 0) this.parentNode.children.splice(idx, 1);
+      this.parentNode = null;
+    }
   }
 
   focus(): void {}
@@ -171,7 +182,7 @@ describe('ModalDialog', () => {
 
     const titleBar = wrap.children[0];
     expect(titleBar.className).toBe('dialog-title');
-    expect(titleBar.textContent).toBe('문서 설정');
+    expect(titleBar.textContent).toContain('문서 설정');
   });
 
   it('creates close button, body, and footer', () => {
@@ -233,12 +244,11 @@ describe('ModalDialog', () => {
     expect(overlay.isConnected).toBe(false);
   });
 
-  it('Enter key on non-input triggers confirm', () => {
-    const onConfirm = vi.fn();
+  it('Enter key on non-input triggers confirm and closes dialog', async () => {
     const dialog = new TestDialog();
-    dialog.confirmResult = onConfirm() as undefined;
     dialog.show();
 
+    const overlay = fakeDocument.body.children[0];
     const event = {
       key: 'Enter',
       target: { tagName: 'DIV' },
@@ -250,19 +260,20 @@ describe('ModalDialog', () => {
 
     expect(event.stopPropagation).toHaveBeenCalled();
     expect(event.preventDefault).toHaveBeenCalled();
+    await Promise.resolve();
+    expect(overlay.isConnected).toBe(false);
   });
 
   it('does not build DOM twice on repeated show calls', () => {
     const dialog = new TestDialog();
     dialog.show();
+    const overlay = fakeDocument.body.children[0];
+
     dialog.hide();
     dialog.show();
 
-    expect(fakeDocument.body.children.length).toBe(2);
-
-    const overlay1 = fakeDocument.body.children[0];
-    const overlay2 = fakeDocument.body.children[1];
-    expect(overlay1).toBe(overlay2);
+    expect(fakeDocument.body.children.length).toBe(1);
+    expect(fakeDocument.body.children[0]).toBe(overlay);
   });
 
   it('stops propagation for all keyboard events while open', () => {

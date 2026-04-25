@@ -86,8 +86,8 @@ describe('openPrintDialog', () => {
     (globalThis as Record<string, unknown>).document = fakeDocument;
     (globalThis as Record<string, unknown>).window = {
       print: printMock,
-      setTimeout: globalThis.setTimeout,
-      clearTimeout: globalThis.clearTimeout,
+      setTimeout: vi.fn(() => 0),
+      clearTimeout: vi.fn(),
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     };
