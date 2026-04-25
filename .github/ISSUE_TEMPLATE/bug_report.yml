@@ -1,0 +1,84 @@
+name: Bug Report
+description: Report a bug in HOP
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux (Ubuntu/Debian)
+        - Linux (Fedora/RHEL)
+        - Linux (Arch/Manjaro)
+        - Linux (other)
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS Version
+      placeholder: "e.g. macOS 15.4, Windows 11 24H2, Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Install Package
+      options:
+        - DMG (macOS)
+        - Homebrew (macOS)
+        - MSI (Windows)
+        - AppImage (Linux)
+        - DEB (Linux)
+        - RPM (Linux)
+    validations:
+      required: true
+
+  - type: input
+    id: hop-version
+    attributes:
+      label: HOP Version
+      placeholder: "e.g. 0.1.8"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly. Include screenshots if possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Step-by-step instructions to reproduce the issue.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: |
+        Terminal error output, HWP sample file, IME name (for input issues), display setup (for rendering issues), etc.
+    validations:
+      required: false
