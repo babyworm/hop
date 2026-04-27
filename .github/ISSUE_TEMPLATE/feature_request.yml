@@ -1,0 +1,42 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What problem does this feature solve? Why is it needed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the feature or change you'd like to see.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Editor / Rendering
+        - File handling (open/save/export)
+        - Fonts
+        - Printing
+        - Packaging / Installation
+        - UI / UX
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Screenshots, mockups, sample files, or links to related issues.
+    validations:
+      required: false
