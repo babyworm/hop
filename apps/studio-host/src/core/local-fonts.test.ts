@@ -15,7 +15,7 @@ describe('local fonts', () => {
     delete (globalThis as { FontFace?: unknown }).FontFace;
   });
 
-  it('hydrates desktop font families from the native catalog without filtering registered names', async () => {
+  it('hydrates desktop font families from the native catalog while filtering blocked authoring names', async () => {
     (globalThis as { window?: unknown }).window = { __TAURI_INTERNALS__: {} };
     invokeMock.mockResolvedValue([
       {
@@ -32,18 +32,27 @@ describe('local fonts', () => {
         sourceKind: 'system-installed',
         path: '/System/Fonts/NewFont-Regular.ttf',
       },
+      {
+        family: '새 폰트',
+        postScriptName: 'NewFont-Bold',
+        style: 'normal',
+        sourceKind: 'system-installed',
+        path: '/System/Fonts/NewFont-Bold.ttf',
+      },
     ]);
 
     const { detectLocalFonts, getLocalFonts } = await import('./local-fonts');
 
     await expect(detectLocalFonts()).resolves.toEqual(
-      expect.arrayContaining(['HY헤드라인M', '새 폰트']),
+      expect.arrayContaining(['새 폰트']),
     );
-    expect(getLocalFonts()).toEqual(expect.arrayContaining(['HY헤드라인M', '새 폰트']));
+    expect(getLocalFonts()).toEqual(expect.arrayContaining(['새 폰트']));
+    expect(getLocalFonts()).toEqual(['새 폰트']);
+    expect(getLocalFonts()).not.toContain('HY헤드라인M');
     expect(invokeMock).toHaveBeenCalledWith('list_local_fonts');
   });
 
-  it('loads requested file-backed fonts through the desktop bridge once per path', async () => {
+  it('loads requested safe file-backed fonts through the desktop bridge once per path', async () => {
     (globalThis as { window?: unknown }).window = { __TAURI_INTERNALS__: {} };
     const addedFamilies: string[] = [];
     installBinaryFontEnvironment(addedFamilies);
@@ -59,12 +68,12 @@ describe('local fonts', () => {
             path: '/vendor/HYHeadLineM.ttf',
           },
           {
-            family: 'HY헤드라인M',
-            postScriptName: 'HYHeadLineM',
+            family: '새 파일폰트',
+            postScriptName: 'NewFont',
             style: 'normal',
             weight: 400,
             sourceKind: 'file-backed',
-            path: '/vendor/HYHeadLineM.ttf',
+            path: '/vendor/NewFont.ttf',
           },
           {
             family: '맑은 고딕',
@@ -75,7 +84,7 @@ describe('local fonts', () => {
         ];
       }
       if (command === 'read_local_font') {
-        expect(args?.path).toBe('/vendor/HYHeadLineM.ttf');
+        expect(args?.path).toBe('/vendor/NewFont.ttf');
         return [0, 1, 2, 3];
       }
       throw new Error(`unexpected command: ${command}`);
@@ -83,14 +92,15 @@ describe('local fonts', () => {
 
     const { ensureLocalFontsAvailable } = await import('./local-fonts');
 
-    const availableFonts = await ensureLocalFontsAvailable(['HYHeadLine M', 'HY헤드라인M']);
+    const availableFonts = await ensureLocalFontsAvailable(['HYHeadLine M', '새 파일폰트']);
 
     expect(Array.from(availableFonts)).toEqual(
-      expect.arrayContaining(['HYHeadLine M', 'HY헤드라인M', '맑은 고딕']),
+      expect.arrayContaining(['새 파일폰트', '맑은 고딕']),
     );
-    expect(availableFonts.size).toBe(3);
-    expect(addedFamilies).toEqual(expect.arrayContaining(['HYHeadLine M', 'HY헤드라인M']));
-    expect(invokeMock).toHaveBeenCalledWith('read_local_font', { path: '/vendor/HYHeadLineM.ttf' });
+    expect(availableFonts).not.toContain('HYHeadLine M');
+    expect(availableFonts.size).toBe(2);
+    expect(addedFamilies).toEqual(['새 파일폰트']);
+    expect(invokeMock).toHaveBeenCalledWith('read_local_font', { path: '/vendor/NewFont.ttf' });
     expect(invokeMock).toHaveBeenCalledTimes(2);
   });
 

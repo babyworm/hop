@@ -1,4 +1,5 @@
 import { detectLocalFontEntries, ensureLocalFontsAvailable } from './local-fonts';
+import { filterAuthoringFontFamilies, isAuthoringBlockedFontFamily } from './font-authoring-policy';
 
 interface FontEntry {
   name: string;
@@ -72,7 +73,7 @@ const FONT_LIST: FontEntry[] = [
   { name: '고운돋움', file: '/fonts/GowunDodum-Regular.woff2' },
 ];
 
-export const REGISTERED_FONTS = new Set(FONT_LIST.map((font) => font.name));
+export const REGISTERED_FONTS = new Set(filterAuthoringFontFamilies(FONT_LIST.map((font) => font.name)));
 
 const CRITICAL_FONTS = new Set(['함초롬바탕', '함초롬돋움']);
 const OS_FONT_CANDIDATES = [
@@ -136,11 +137,15 @@ async function hydrateDetectedFonts(targetFonts: Set<string>): Promise<void> {
   const localFontEntries = await detectLocalFontEntries().catch(() => []);
   for (const entry of localFontEntries) {
     if (entry.sourceKind !== 'system-installed') continue;
+    if (isAuthoringBlockedFontFamily(entry.family)) continue;
     detectedOSFonts.add(entry.family);
   }
 
-  const availableFonts = await ensureLocalFontsAvailable(targetFonts).catch(() => new Set<string>());
+  const availableFonts = await ensureLocalFontsAvailable(
+    Array.from(targetFonts).filter((family) => !isAuthoringBlockedFontFamily(family)),
+  ).catch(() => new Set<string>());
   for (const family of availableFonts) {
+    if (isAuthoringBlockedFontFamily(family)) continue;
     detectedOSFonts.add(family);
   }
 

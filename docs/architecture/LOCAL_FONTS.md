@@ -23,15 +23,15 @@ HOP는 `third_party/rhwp`를 수정하지 않고, 데스크톱 셸과 studio hos
 - macOS: `~/Library/Fonts`
 - Linux: `~/.local/share/fonts`, `~/.fonts`, 필요 시 `/mnt/c/Windows/Fonts`
 - Windows per-user: `%LOCALAPPDATA%/Microsoft/Windows/Fonts`
-- Windows Hancom vendor roots: `%ProgramFiles%/Hnc/Office*/HOffice*/Shared/TTF`, `%ProgramFiles(x86)%/Hnc/Office*/HOffice*/Shared/TTF`
 
-Windows Hancom 경로는 버전 문자열을 하드코딩하지 않고 `Office*` / `HOffice*` 패턴으로 제한해 탐색한다.
+`%ProgramFiles%/Hnc/Office*/HOffice*/Shared/TTF` 같은 Windows Hancom vendor root는 의도적으로 스캔하지 않는다. proprietary Hancom/Human 폰트명을 참조하는 문서는 HOP substitute 폰트로 렌더링하지만, 해당 로컬 vendor 폰트 바이너리를 authoring 폰트로 노출하지 않는다.
 
 ## 보안 및 라이선스 경계
 
 - font file bytes는 현재 머신에서만 읽고, editor webview 등록에만 사용한다.
 - file-backed font read는 지원된 스캔 루트 내부와 허용 확장자(`ttf`, `otf`, `ttc`, `otc`, `woff`, `woff2`)로 제한한다.
 - proprietary font file path나 bytes를 telemetry, logs, release artifacts에 남기지 않는다.
+- proprietary Hancom/Human family name은 authoring 폰트 목록에서 제외하고, 새 글자 서식 적용이나 HTML 붙여넣기 시 HOP-safe substitute family로 정규화한다.
 - HOP repo에는 오픈 라이선스 substitute 폰트만 유지한다.
 
 ## Editor / PDF 일관성

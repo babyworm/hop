@@ -135,4 +135,69 @@ describe('Toolbar font application sequencing', () => {
     expect(emit).toHaveBeenCalledTimes(1);
     expect(emit).toHaveBeenCalledWith('format-char', { fontId: 202 });
   });
+
+  it('sanitizes blocked single-font selections before applying them', async () => {
+    loadWebFontsMock.mockResolvedValue(undefined);
+    const { toolbar, emit, wasm } = createToolbarHarness();
+    const applyFontSelection = (
+      Toolbar.prototype as unknown as Record<string, (this: object, name: string) => Promise<void>>
+    ).applyFontSelection;
+
+    await applyFontSelection.call(toolbar, 'HY헤드라인M');
+
+    expect(loadWebFontsMock).toHaveBeenCalledWith(['함초롬돋움']);
+    expect(wasm.findOrCreateFontId).toHaveBeenCalledWith('함초롬돋움');
+    expect(emit).toHaveBeenCalledWith('format-char', { fontId: 101 });
+  });
+
+  it('preserves existing non-selected language font names when applying one language', async () => {
+    loadWebFontsMock.mockResolvedValue(undefined);
+    const { toolbar, wasm } = createToolbarHarness();
+    toolbar.fontLang.value = '2';
+    toolbar.lastFontFamilies = ['HY헤드라인M', 'B', 'C', 'D', 'E', 'F', 'G'];
+    const applyFontSelection = (
+      Toolbar.prototype as unknown as Record<string, (this: object, name: string) => Promise<void>>
+    ).applyFontSelection;
+
+    await applyFontSelection.call(toolbar, '휴먼명조');
+
+    expect(loadWebFontsMock).toHaveBeenCalledWith(['함초롬바탕']);
+    expect(wasm.findOrCreateFontIdForLang).toHaveBeenNthCalledWith(1, 2, '함초롬바탕');
+    expect(wasm.findOrCreateFontIdForLang).toHaveBeenNthCalledWith(2, 0, 'HY헤드라인M');
+  });
+
+  it('sanitizes blocked font-set entries before applying language font IDs', async () => {
+    loadWebFontsMock.mockResolvedValue(undefined);
+    const { toolbar, emit, wasm } = createToolbarHarness();
+    const applyFontSet = (
+      Toolbar.prototype as unknown as Record<string, (this: object, fontSet: Record<string, string>) => Promise<void>>
+    ).applyFontSet;
+
+    await applyFontSet.call(toolbar, {
+      name: 'Mixed Set',
+      korean: 'HY헤드라인M',
+      english: 'Pretendard',
+      chinese: '휴먼명조',
+      japanese: '나눔고딕',
+      other: 'HCI Poppy',
+      symbol: 'D2Coding',
+      user: '맑은 고딕',
+    });
+
+    expect(loadWebFontsMock).toHaveBeenCalledWith([
+      '함초롬돋움',
+      'Pretendard',
+      '함초롬바탕',
+      '나눔고딕',
+      '함초롬돋움',
+      'D2Coding',
+      '맑은 고딕',
+    ]);
+    expect(wasm.findOrCreateFontIdForLang).toHaveBeenNthCalledWith(1, 0, '함초롬돋움');
+    expect(wasm.findOrCreateFontIdForLang).toHaveBeenNthCalledWith(3, 2, '함초롬바탕');
+    expect(wasm.findOrCreateFontIdForLang).toHaveBeenNthCalledWith(5, 4, '함초롬돋움');
+    expect(emit).toHaveBeenCalledWith('format-char', {
+      fontIds: [1000, 1001, 1002, 1003, 1004, 1005, 1006],
+    });
+  });
 });

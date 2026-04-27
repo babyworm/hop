@@ -77,29 +77,29 @@ describe('font loader', () => {
     });
     vi.doMock('./local-fonts', () => ({
       detectLocalFontEntries: vi.fn().mockResolvedValue([
-        { family: 'HY헤드라인M', postScriptName: 'HYHeadLineM', style: 'normal', sourceKind: 'file-backed' },
+        { family: 'Noto Sans KR', postScriptName: 'NotoSansKR', style: 'normal', sourceKind: 'file-backed' },
       ]),
-      ensureLocalFontsAvailable: vi.fn().mockResolvedValue(new Set(['HY헤드라인M'])),
+      ensureLocalFontsAvailable: vi.fn().mockResolvedValue(new Set(['Noto Sans KR'])),
     }));
     const { getDetectedOSFonts, loadWebFonts } = await import('./font-loader');
 
-    await loadWebFonts(['HY헤드라인M']);
+    await loadWebFonts(['Noto Sans KR']);
 
-    expect(getDetectedOSFonts().has('HY헤드라인M')).toBe(true);
-    expect(fontFaces.some((face) => face.name === 'HY헤드라인M')).toBe(false);
-    expect((appended[0] as { textContent?: string }).textContent).not.toContain('HY헤드라인M');
+    expect(getDetectedOSFonts().has('Noto Sans KR')).toBe(true);
+    expect(fontFaces.some((face) => face.name === 'Noto Sans KR')).toBe(false);
+    expect((appended[0] as { textContent?: string }).textContent).not.toContain('Noto Sans KR');
   });
 
-  it('keeps substitute faces when file-backed fonts are discovered but not yet loadable', async () => {
+  it('keeps substitute faces when restricted local fonts are discovered', async () => {
     const fontFaces: Array<{ name: string; source: string }> = [];
     const { appended } = installFontEnvironment({
       onFontFace: (face) => fontFaces.push(face),
     });
     vi.doMock('./local-fonts', () => ({
       detectLocalFontEntries: vi.fn().mockResolvedValue([
-        { family: 'HY헤드라인M', postScriptName: 'HYHeadLineM', style: 'normal', sourceKind: 'file-backed' },
+        { family: 'HY헤드라인M', postScriptName: 'HYHeadLineM', style: 'normal', sourceKind: 'system-installed' },
       ]),
-      ensureLocalFontsAvailable: vi.fn().mockResolvedValue(new Set<string>()),
+      ensureLocalFontsAvailable: vi.fn().mockResolvedValue(new Set(['HY헤드라인M'])),
     }));
     const { getDetectedOSFonts, loadWebFonts } = await import('./font-loader');
 

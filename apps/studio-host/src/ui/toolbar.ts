@@ -6,6 +6,7 @@ import { loadWebFonts } from '@/core/font-loader';
 import { userSettings } from '@/core/user-settings';
 import type { FontSet } from '@/core/user-settings';
 import { getLocalFonts } from '@/core/local-fonts';
+import { sanitizeAuthoringFontFamily } from '@/core/font-authoring-policy';
 import { getCustomSelectRoot, syncCustomSelect } from './custom-select';
 
 /** 서식 도구 모음 (style-bar) 컨트롤러 */
@@ -461,6 +462,7 @@ export class Toolbar {
 
   /** 문서 로드 시 스타일 목록으로 드롭다운을 채운다 */
   initStyleDropdown(): void {
+    this.lastFontFamilies = undefined;
     try {
       const styles = this.wasm.getStyleList();
       this.styleName.replaceChildren();
@@ -670,13 +672,14 @@ export class Toolbar {
   /** 대표 글꼴 세트를 7개 언어에 일괄 적용 */
   private async applyFontSelection(name: string): Promise<void> {
     const requestId = this.beginFontApplyRequest();
-    await loadWebFonts([name]).catch(() => undefined);
+    const authoringName = sanitizeAuthoringFontFamily(name);
+    await loadWebFonts([authoringName]).catch(() => undefined);
     if (!this.isLatestFontApplyRequest(requestId)) return;
 
     const langVal = this.fontLang.value;
     if (langVal === 'all') {
       // 전체 언어 일괄 적용
-      const fontId = this.wasm.findOrCreateFontId(name);
+      const fontId = this.wasm.findOrCreateFontId(authoringName);
       if (fontId >= 0) {
         this.eventBus.emit('format-char', { fontId } as CharProperties);
       }
@@ -685,7 +688,7 @@ export class Toolbar {
 
     // 특정 언어만 적용 (fontIds 배열)
     const langIdx = parseInt(langVal, 10);
-    const fontId = this.wasm.findOrCreateFontIdForLang(langIdx, name);
+    const fontId = this.wasm.findOrCreateFontIdForLang(langIdx, authoringName);
     if (fontId >= 0 && this.lastFontFamilies) {
       // 현재 fontIds를 기반으로 해당 언어만 교체
       const ids: number[] = [];
@@ -707,11 +710,12 @@ export class Toolbar {
     const langKeys: (keyof Omit<FontSet, 'name'>)[] = [
       'korean', 'english', 'chinese', 'japanese', 'other', 'symbol', 'user',
     ];
-    await loadWebFonts(langKeys.map((key) => fs[key])).catch(() => undefined);
+    const authoringFonts = langKeys.map((key) => sanitizeAuthoringFontFamily(fs[key]));
+    await loadWebFonts(authoringFonts).catch(() => undefined);
     if (!this.isLatestFontApplyRequest(requestId)) return;
     const ids: number[] = [];
     for (let i = 0; i < 7; i++) {
-      const fontName = fs[langKeys[i]];
+      const fontName = authoringFonts[i];
       ids.push(this.wasm.findOrCreateFontIdForLang(i, fontName));
     }
     this.eventBus.emit('format-char', { fontIds: ids } as CharProperties);

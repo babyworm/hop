@@ -22,7 +22,7 @@ import { detectDesktopPlatform } from '@/core/platform';
 import { resolveTextInputAnchorRect } from './text-input-anchor';
 import * as _mouse from './input-handler-mouse';
 import * as _table from './input-handler-table';
-import * as _keyboard from '@upstream/engine/input-handler-keyboard';
+import * as _keyboard from './input-handler-keyboard';
 import * as _text from '@upstream/engine/input-handler-text';
 import * as _picture from '@upstream/engine/input-handler-picture';
 import { resolvePageLeft, resolveVirtualScrollPageLeft } from '../view/page-left';

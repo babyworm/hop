@@ -1,3 +1,5 @@
+import { filterAuthoringFontFamilies, isAuthoringBlockedFontFamily } from './font-authoring-policy';
+
 interface BrowserFontData {
   family: string;
   fullName: string;
@@ -44,11 +46,11 @@ export async function detectLocalFontEntries(): Promise<LocalFontEntry[]> {
 
 export async function detectLocalFonts(): Promise<string[]> {
   const entries = await detectLocalFontEntries();
-  return uniqueFamilies(entries);
+  return uniqueAuthoringFamilies(entries);
 }
 
 export function getLocalFonts(): string[] {
-  return uniqueFamilies(cachedFontEntries ?? []);
+  return uniqueAuthoringFamilies(cachedFontEntries ?? []);
 }
 
 export async function ensureLocalFontsAvailable(targetFamilies?: Iterable<string>): Promise<Set<string>> {
@@ -56,6 +58,7 @@ export async function ensureLocalFontsAvailable(targetFamilies?: Iterable<string
   const available = new Set(
     entries
       .filter((entry) => entry.sourceKind === 'system-installed')
+      .filter((entry) => !isAuthoringBlockedFontFamily(entry.family))
       .map((entry) => entry.family),
   );
   const requestedFamilies = resolveRequestedFamilies(entries, targetFamilies);
@@ -82,14 +85,18 @@ export async function ensureLocalFontsAvailable(targetFamilies?: Iterable<string
     for (const entry of pathEntries) {
       const entryKey = fileBackedEntryKey(entry);
       if (loadedFileBackedEntryKeys.has(entryKey)) {
-        available.add(entry.family);
+        if (!isAuthoringBlockedFontFamily(entry.family)) {
+          available.add(entry.family);
+        }
         continue;
       }
 
       try {
         await registerDesktopFontFace(entry, fontBytes);
         loadedFileBackedEntryKeys.add(entryKey);
-        available.add(entry.family);
+        if (!isAuthoringBlockedFontFamily(entry.family)) {
+          available.add(entry.family);
+        }
       } catch {
         // File-backed fonts are best-effort; substitute fallback remains available.
       }
@@ -189,13 +196,17 @@ function resolveRequestedFamilies(
   targetFamilies?: Iterable<string>,
 ): Set<string> {
   if (!targetFamilies) {
-    return new Set(entries.map((entry) => entry.family));
+    return new Set(
+      entries
+        .map((entry) => entry.family)
+        .filter((family) => !isAuthoringBlockedFontFamily(family)),
+    );
   }
 
   return new Set(
     Array.from(targetFamilies)
       .map((family) => family.trim())
-      .filter(Boolean),
+      .filter((family) => family && !isAuthoringBlockedFontFamily(family)),
   );
 }
 
@@ -221,10 +232,9 @@ function fileBackedEntryKey(entry: LocalFontEntry): string {
   ].join('\u0000');
 }
 
-function uniqueFamilies(entries: LocalFontEntry[]): string[] {
-  return Array.from(new Set(entries.map((entry) => entry.family))).sort((a, b) =>
-    a.localeCompare(b, 'ko'),
-  );
+function uniqueAuthoringFamilies(entries: LocalFontEntry[]): string[] {
+  const families = filterAuthoringFontFamilies(entries.map((entry) => entry.family));
+  return Array.from(new Set(families)).sort((a, b) => a.localeCompare(b, 'ko'));
 }
 
 function supportsBinaryFontLoading(): boolean {

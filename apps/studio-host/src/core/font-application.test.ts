@@ -20,21 +20,39 @@ describe('resolveCharShapeFontMods', () => {
       findOrCreateFontId: vi.fn(() => 42),
     };
     const mods = {
-      fontName: 'HY헤드라인M',
+      fontName: '나눔고딕',
       italic: true,
     };
 
     const resolved = await resolveCharShapeFontMods(wasm, mods);
 
-    expect(loadWebFontsMock).toHaveBeenCalledWith(['HY헤드라인M']);
-    expect(wasm.findOrCreateFontId).toHaveBeenCalledWith('HY헤드라인M');
+    expect(loadWebFontsMock).toHaveBeenCalledWith(['나눔고딕']);
+    expect(wasm.findOrCreateFontId).toHaveBeenCalledWith('나눔고딕');
     expect(resolved).toEqual({
       italic: true,
       fontId: 42,
     });
     expect(mods).toEqual({
-      fontName: 'HY헤드라인M',
+      fontName: '나눔고딕',
       italic: true,
+    });
+  });
+
+  it('sanitizes blocked font names before converting them to font IDs', async () => {
+    const wasm = {
+      findOrCreateFontId: vi.fn(() => 7),
+    };
+
+    const resolved = await resolveCharShapeFontMods(wasm, {
+      fontName: 'HY헤드라인M',
+      bold: true,
+    });
+
+    expect(loadWebFontsMock).toHaveBeenCalledWith(['함초롬돋움']);
+    expect(wasm.findOrCreateFontId).toHaveBeenCalledWith('함초롬돋움');
+    expect(resolved).toEqual({
+      bold: true,
+      fontId: 7,
     });
   });
 

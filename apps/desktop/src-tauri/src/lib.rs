@@ -6,6 +6,7 @@ mod linux_runtime;
 #[cfg(target_os = "macos")]
 mod menu;
 mod pdf_export;
+mod pdf_font_fallbacks;
 mod pending_open;
 mod state;
 #[cfg(any(target_os = "macos", windows, target_os = "linux"))]

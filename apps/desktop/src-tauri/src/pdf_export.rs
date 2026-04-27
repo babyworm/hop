@@ -5,6 +5,7 @@ use std::path::Path;
 
 use crate::commands::PageRange;
 use crate::font_catalog;
+use crate::pdf_font_fallbacks::add_font_fallbacks;
 use crate::state::atomic_write;
 
 pub fn export_core_to_pdf(
@@ -71,25 +72,6 @@ fn resolve_page_range(page_range: Option<PageRange>, page_count: u32) -> Result<
         ));
     }
     Ok((start..=end).collect())
-}
-
-fn add_font_fallbacks(svg: &str) -> String {
-    svg.replace(
-        "font-family=\"휴먼명조\"",
-        "font-family=\"휴먼명조, 바탕, AppleMyungjo, serif\"",
-    )
-    .replace(
-        "font-family=\"HCI Poppy\"",
-        "font-family=\"HCI Poppy, 맑은 고딕, Apple SD Gothic Neo, sans-serif\"",
-    )
-    .replace(
-        "font-family=\"바탕체,",
-        "font-family=\"바탕체, 바탕, AppleMyungjo, ",
-    )
-    .replace(
-        "font-family=\"굴림체,",
-        "font-family=\"굴림체, 굴림, 맑은 고딕, Apple SD Gothic Neo, ",
-    )
 }
 
 fn conversion_options() -> svg2pdf::ConversionOptions {

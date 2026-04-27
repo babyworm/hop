@@ -43,12 +43,6 @@ pub fn desktop_extra_font_dirs() -> Vec<PathBuf> {
         if let Some(local_app_data) = env_path("LOCALAPPDATA") {
             dirs.extend(windows_user_font_dirs(&local_app_data));
         }
-
-        let program_files_roots = ["ProgramFiles", "ProgramFiles(x86)"]
-            .iter()
-            .filter_map(|name| env_path(name))
-            .collect::<Vec<_>>();
-        dirs.extend(discover_hancom_shared_ttf_dirs(&program_files_roots));
     }
 
     dedupe_existing_dirs(dirs)
@@ -220,47 +214,6 @@ fn windows_user_font_dirs(local_app_data: &Path) -> Vec<PathBuf> {
     vec![local_app_data.join("Microsoft/Windows/Fonts")]
 }
 
-#[cfg(any(windows, test))]
-fn discover_hancom_shared_ttf_dirs(program_file_roots: &[PathBuf]) -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-
-    for root in program_file_roots {
-        let hnc_root = root.join("Hnc");
-        for office_dir in read_dir_matching_prefix(&hnc_root, "Office") {
-            for hoffice_dir in read_dir_matching_prefix(&office_dir, "HOffice") {
-                let shared_ttf_dir = hoffice_dir.join("Shared/TTF");
-                if shared_ttf_dir.is_dir() {
-                    dirs.push(shared_ttf_dir);
-                }
-            }
-        }
-    }
-
-    dedupe_existing_dirs(dirs)
-}
-
-#[cfg(any(windows, test))]
-fn read_dir_matching_prefix(root: &Path, prefix: &str) -> Vec<PathBuf> {
-    let Ok(entries) = fs::read_dir(root) else {
-        return Vec::new();
-    };
-
-    let mut paths = entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.is_dir()
-                && path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map(|name| name.starts_with(prefix))
-                    .unwrap_or(false)
-        })
-        .collect::<Vec<_>>();
-    paths.sort();
-    paths
-}
-
 fn dedupe_existing_dirs(dirs: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut seen = BTreeSet::new();
     let mut deduped = Vec::new();
@@ -381,21 +334,6 @@ mod tests {
             ),
             "system-installed"
         );
-    }
-
-    #[test]
-    fn discover_hancom_shared_ttf_dirs_finds_versioned_installations() {
-        let temp = tempfile::tempdir().unwrap();
-        let program_files = temp.path().join("Program Files (x86)");
-        let wanted = program_files.join("Hnc/Office 2024/HOffice120/Shared/TTF");
-        fs::create_dir_all(&wanted).unwrap();
-        fs::create_dir_all(program_files.join("Hnc/Office Legacy/NotHOffice/Shared/TTF")).unwrap();
-        fs::create_dir_all(program_files.join("OtherVendor/Office 2024/HOffice120/Shared/TTF"))
-            .unwrap();
-
-        let found = discover_hancom_shared_ttf_dirs(&[program_files]);
-
-        assert_eq!(found, vec![wanted.canonicalize().unwrap()]);
     }
 
     #[test]

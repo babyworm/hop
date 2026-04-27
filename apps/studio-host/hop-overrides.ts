@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 const overrideIds = [
   'core/font-loader',
   'core/font-application',
+  'core/font-authoring-policy',
   'core/local-fonts',
   'core/bridge-factory',
   'core/document-files',
@@ -16,6 +17,7 @@ const overrideIds = [
   'command/commands/file',
   'engine/cell-selection-renderer',
   'engine/input-handler',
+  'engine/input-handler-keyboard',
   'engine/table-object-renderer',
   'engine/table-resize-renderer',
   'ui/about-dialog',
