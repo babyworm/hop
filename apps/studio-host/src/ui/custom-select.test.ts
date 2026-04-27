@@ -3,7 +3,7 @@ import { enhanceCustomSelects, getCustomSelectRoot, syncCustomSelect } from './c
 
 class FakeElement {
   tagName: string;
-  className = '';
+  private _className = '';
   textContent: string | null = '';
   id = '';
   type = '';
@@ -23,19 +23,28 @@ class FakeElement {
     this.tagName = tagName.toUpperCase();
   }
 
+  get className(): string {
+    return this._className;
+  }
+
+  set className(value: string) {
+    this._className = value;
+    this.classes = new Set(value.split(/\s+/).filter(Boolean));
+  }
+
   get classList() {
     const self = this;
     return {
       add(cls: string) {
         self.classes.add(cls);
-        self.className = Array.from(self.classes).join(' ');
+        self._className = Array.from(self.classes).join(' ');
       },
       remove(cls: string) {
         self.classes.delete(cls);
-        self.className = Array.from(self.classes).join(' ');
+        self._className = Array.from(self.classes).join(' ');
       },
       contains(cls: string) {
-        return self.classes.has(cls) || self.className.split(/\s+/).includes(cls);
+        return self.classes.has(cls);
       },
       toggle(cls: string, force?: boolean) {
         if (force === undefined) {
@@ -46,7 +55,7 @@ class FakeElement {
         } else {
           self.classes.delete(cls);
         }
-        self.className = Array.from(self.classes).join(' ');
+        self._className = Array.from(self.classes).join(' ');
       },
     };
   }
@@ -141,6 +150,22 @@ class FakeElement {
   }
 }
 
+class FakeOption extends FakeElement {
+  selected = false;
+
+  constructor() {
+    super('option');
+  }
+}
+
+class FakeOptGroup extends FakeElement {
+  label = '';
+
+  constructor() {
+    super('optgroup');
+  }
+}
+
 function matchesSelector(el: FakeElement, selector: string): boolean {
   const parts = selector.split(',').map((s) => s.trim());
   return parts.some((part) => {
@@ -162,15 +187,14 @@ function createFakeSelect(className: string, options: string[] = []): FakeElemen
   (select as unknown as { multiple: boolean }).multiple = false;
   (select as unknown as { size: number }).size = 1;
   for (const text of options) {
-    const opt = new FakeElement('option');
-    opt.tagName = 'OPTION';
+    const opt = new FakeOption();
     opt.textContent = text;
     opt.value = text;
-    (opt as unknown as { selected: boolean }).selected = false;
     select.appendChild(opt);
   }
   if (options.length > 0) {
-    (select.children[0] as unknown as { selected: boolean }).selected = true;
+    (select.children[0] as FakeOption).selected = true;
+    select.value = options[0];
   }
   return select;
 }
@@ -209,8 +233,8 @@ describe('custom-select', () => {
     fakeDocument = new FakeDocument();
     (globalThis as Record<string, unknown>).document = fakeDocument;
     (globalThis as Record<string, unknown>).MutationObserver = FakeMutationObserver;
-    (globalThis as Record<string, unknown>).HTMLOptGroupElement = class {};
-    (globalThis as Record<string, unknown>).HTMLOptionElement = class {};
+    (globalThis as Record<string, unknown>).HTMLOptGroupElement = FakeOptGroup;
+    (globalThis as Record<string, unknown>).HTMLOptionElement = FakeOption;
     (globalThis as Record<string, unknown>).Event = class { type: string; bubbles: boolean; constructor(type: string, opts?: { bubbles?: boolean }) { this.type = type; this.bubbles = opts?.bubbles ?? false; } };
   });
 
@@ -275,7 +299,7 @@ describe('custom-select', () => {
     expect(getCustomSelectRoot(select as unknown as HTMLSelectElement)).toBeNull();
   });
 
-  it('enhances a matching select and exposes root via getCustomSelectRoot', () => {
+  it('enhances a matching select and creates option rows with correct display', () => {
     const container = new FakeElement('div');
     const select = createFakeSelect('sb-combo', ['Option A', 'Option B']);
     container.appendChild(select);
@@ -284,29 +308,59 @@ describe('custom-select', () => {
 
     const root = getCustomSelectRoot(select as unknown as HTMLSelectElement);
     expect(root).not.toBeNull();
+
+    const rootEl = root as unknown as FakeElement;
+    const menuRows = rootEl.querySelectorAll('.custom-select-option');
+    expect(menuRows.length).toBe(2);
+    expect((menuRows[0] as FakeElement).textContent).toBe('Option A');
+    expect((menuRows[1] as FakeElement).textContent).toBe('Option B');
+
+    const valueSpan = rootEl.querySelector('.custom-select-value');
+    expect(valueSpan).not.toBeNull();
+    expect((valueSpan as FakeElement).textContent).toBe('Option A');
+
+    expect((menuRows[0] as FakeElement).classList.contains('selected')).toBe(true);
+    expect((menuRows[1] as FakeElement).classList.contains('selected')).toBe(false);
   });
 
-  it('does not enhance the same select twice', () => {
+  it('does not enhance the same select twice (idempotent DOM)', () => {
     const container = new FakeElement('div');
-    const select = createFakeSelect('dialog-select', ['A']);
+    const select = createFakeSelect('dialog-select', ['A', 'B']);
     container.appendChild(select);
 
     enhanceCustomSelects(container as unknown as ParentNode);
     const root1 = getCustomSelectRoot(select as unknown as HTMLSelectElement);
+    const rowsBefore = (root1 as unknown as FakeElement).querySelectorAll('.custom-select-option');
 
     enhanceCustomSelects(container as unknown as ParentNode);
     const root2 = getCustomSelectRoot(select as unknown as HTMLSelectElement);
+    const rowsAfter = (root2 as unknown as FakeElement).querySelectorAll('.custom-select-option');
 
     expect(root1).toBe(root2);
+    expect(rowsAfter.length).toBe(rowsBefore.length);
+    expect(rowsAfter.length).toBe(2);
   });
 
-  it('syncCustomSelect updates display after enhancement', () => {
+  it('syncCustomSelect updates display text and selected class', () => {
     const container = new FakeElement('div');
     const select = createFakeSelect('sb-combo', ['First', 'Second']);
     container.appendChild(select);
 
     enhanceCustomSelects(container as unknown as ParentNode);
 
-    expect(() => syncCustomSelect(select as unknown as HTMLSelectElement)).not.toThrow();
+    (select.children[0] as FakeOption).selected = false;
+    (select.children[1] as FakeOption).selected = true;
+    select.value = 'Second';
+    syncCustomSelect(select as unknown as HTMLSelectElement);
+
+    const root = getCustomSelectRoot(select as unknown as HTMLSelectElement);
+    const rootEl = root as unknown as FakeElement;
+
+    const valueSpan = rootEl.querySelector('.custom-select-value');
+    expect((valueSpan as FakeElement).textContent).toBe('Second');
+
+    const menuRows = rootEl.querySelectorAll('.custom-select-option');
+    expect((menuRows[0] as FakeElement).classList.contains('selected')).toBe(false);
+    expect((menuRows[1] as FakeElement).classList.contains('selected')).toBe(true);
   });
 });

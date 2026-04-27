@@ -165,5 +165,16 @@ describe('openPrintDialog', () => {
     await openPrintDialog(doc, { print: printMock });
 
     expect(doc.renderPageSvg).toHaveBeenCalledTimes(1);
+
+    const printRoot = fakeDocument.body.children.find((c) => c.id === 'hop-print-root');
+    expect(printRoot).toBeDefined();
+    const pageDiv = printRoot!.children.find((c) => c.className === 'hop-print-page');
+    expect(pageDiv).toBeDefined();
+    expect(pageDiv!.children.length).toBe(0);
+
+    expect(printMock).toHaveBeenCalled();
+
+    const win = (globalThis as Record<string, unknown>).window as Record<string, ReturnType<typeof vi.fn>>;
+    expect(win.addEventListener).toHaveBeenCalledWith('afterprint', expect.any(Function), { once: true });
   });
 });
