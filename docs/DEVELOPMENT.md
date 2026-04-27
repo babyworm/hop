@@ -112,7 +112,5 @@ RUN_CHECKS=1 scripts/update-upstream.sh
 
 ## 관련 문서
 
-* [초기 제품 스펙](specs/initial/SPEC.md)
-* [초기 구현 상태](specs/initial/IMPLEMENTATION_STATUS.md)
 * [upstream 경계와 업데이트 방식](architecture/UPSTREAM.md)
 * [데스크톱 릴리즈 노트](operations/DESKTOP_RELEASE.md)

@@ -4,8 +4,6 @@ Tauri 데스크톱 앱은 `apps/desktop/`에서 빌드한다. 배포용 GitHub A
 
 관련 문서:
 
-* 초기 제품 스펙: [`docs/specs/initial/SPEC.md`](../specs/initial/SPEC.md)
-* 현재 구현 상태: [`docs/specs/initial/IMPLEMENTATION_STATUS.md`](../specs/initial/IMPLEMENTATION_STATUS.md)
 * upstream 경계: [`docs/architecture/UPSTREAM.md`](../architecture/UPSTREAM.md)
 
 ## 워크플로 동작
@@ -156,7 +154,7 @@ macOS release build는 다음 조건을 만족하지 않으면 실패한다.
 
 ## Windows 사이닝
 
-### Problem 1-Pager
+### 서명 리스크와 계획
 
 * Background: 홈페이지는 GitHub Release의 `HOP-windows-x64.msi`를 직접 다운로드 링크로 제공한다.
 * Problem: 서명되지 않은 새 `.msi`는 Edge/Windows SmartScreen에서 "일반적으로 다운로드되지 않습니다"로 차단되거나 실행 전 경고가 뜰 수 있다.
