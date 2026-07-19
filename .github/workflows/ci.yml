@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           toolchain="$(node -p "require('./config/rhwp-upstream.json').rustToolchain")"
-          rustup toolchain install "$toolchain" --profile minimal
+          rustup toolchain install "$toolchain" --profile minimal --component clippy
           echo "RUSTUP_TOOLCHAIN=$toolchain" >> "$GITHUB_ENV"
 
       - name: Cache cargo

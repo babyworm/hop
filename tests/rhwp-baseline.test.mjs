@@ -167,6 +167,19 @@ test('desktop release tests and platform builds use the upstream Rust toolchain'
   );
 });
 
+test('CI installs clippy for the upstream Rust toolchain', async () => {
+  const ciWorkflow = await readFile(
+    join(repoRoot, '.github/workflows/ci.yml'),
+    'utf8',
+  );
+
+  assert.match(
+    ciWorkflow,
+    /rustup toolchain install "\$toolchain" --profile minimal --component clippy/,
+  );
+  assert.match(ciWorkflow, /RUSTUP_TOOLCHAIN=\$toolchain/);
+});
+
 test('desktop release checksum manifest does not hash itself', async () => {
   const releaseWorkflow = await readFile(
     join(repoRoot, '.github/workflows/hop-desktop.yml'),
