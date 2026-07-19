@@ -146,6 +146,27 @@ test('HOP product info keeps the upstream rhwp version and adds HOP version sepa
   assert.match(aboutDialog, /HOP \$\{__HOP_VERSION__\}/);
 });
 
+test('desktop release tests and platform builds use the upstream Rust toolchain', async () => {
+  const releaseWorkflow = await readFile(
+    join(repoRoot, '.github/workflows/hop-desktop.yml'),
+    'utf8',
+  );
+  const contractReads = releaseWorkflow.match(
+    /require\(['"]\.\/config\/rhwp-upstream\.json['"]\)\.rustToolchain/g,
+  ) ?? [];
+
+  assert.equal(contractReads.length, 2, 'release test and build jobs should read the contract');
+  assert.match(
+    releaseWorkflow,
+    /rustup toolchain install "\$toolchain" --profile minimal --target "\$\{\{ matrix\.target \}\}"/,
+  );
+  assert.equal(
+    releaseWorkflow.match(/RUSTUP_TOOLCHAIN=\$toolchain/g)?.length,
+    2,
+    'release test and build jobs should activate the pinned toolchain',
+  );
+});
+
 test('HOP keeps PDF export menu-only without a stale Ctrl+E label', async () => {
   const fileCommands = await readFile(join(repoRoot, 'apps/studio-host/src/command/commands/file.ts'), 'utf8');
   const indexHtml = await readFile(join(repoRoot, 'apps/studio-host/index.html'), 'utf8');
