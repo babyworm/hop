@@ -7,6 +7,7 @@ export type { FontSet } from '@upstream/core/user-settings';
 export type {
   CharProperties,
   DocumentInfo,
+  DocumentPosition,
   PageInfo,
   ParaProperties,
 } from '@upstream/core/types';
