@@ -1,8 +1,6 @@
-import { EventBus } from '@/core/event-bus';
-import { WasmBridge } from '@/core/wasm-bridge';
-import type { ParaProperties } from '@/core/types';
-import { VirtualScroll } from '@upstream/view/virtual-scroll';
-import { ViewportManager } from '@upstream/view/viewport-manager';
+import { EventBus, WasmBridge } from '@/upstream/core';
+import type { ParaProperties } from '@/upstream/core';
+import { ViewportManager, VirtualScroll } from '@/upstream/view';
 import { resolvePageLeft } from './page-left';
 
 /** 1mm = 96 / 25.4 px (at 96dpi, zoom=1) */

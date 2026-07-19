@@ -1,10 +1,11 @@
-import { formatCommands as upstreamFormatCommands } from '@upstream/command/commands/format';
-import type { CommandDef } from '@upstream/command/types';
-import { CharShapeDialog } from '@/ui/char-shape-dialog';
+import { formatCommands as upstreamFormatCommands } from '@/upstream/commands';
+import type { CommandDef } from '@/upstream/commands';
+import { CharShapeDialog } from '@/upstream/ui';
 import { resolveCharShapeFontMods } from '@/core/font-application';
+import { replaceUpstreamCommands } from '../replace-upstream-commands';
 
-const hopFormatCommandById = new Map<string, CommandDef>([
-  ['format:char-shape', {
+const hopFormatCommands: CommandDef[] = [
+  {
     id: 'format:char-shape',
     label: '글자 모양',
     icon: 'icon-char-shape',
@@ -30,9 +31,7 @@ const hopFormatCommandById = new Map<string, CommandDef>([
       dialog.onClose = () => ih.focus();
       dialog.show(charProps);
     },
-  }],
-]);
+  },
+];
 
-export const formatCommands: CommandDef[] = upstreamFormatCommands.map((command) =>
-  hopFormatCommandById.get(command.id) ?? command,
-);
+export const formatCommands = replaceUpstreamCommands(upstreamFormatCommands, hopFormatCommands);

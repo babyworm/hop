@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@upstream/command/commands/edit', () => ({
+vi.mock('@/upstream/commands', () => ({
   editCommands: [
     { id: 'edit:copy', label: '복사하기', execute: vi.fn() },
     { id: 'edit:paste', label: '붙이기', execute: vi.fn() },
@@ -11,6 +11,10 @@ vi.mock('@upstream/command/commands/edit', () => ({
 import { editCommands } from './edit';
 
 describe('edit command overrides', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('routes paste through the input handler instead of document.execCommand', () => {
     const performPaste = vi.fn();
     const command = editCommands.find((item) => item.id === 'edit:paste');
@@ -20,6 +24,20 @@ describe('edit command overrides', () => {
     } as never);
 
     expect(performPaste).toHaveBeenCalledOnce();
+  });
+
+  it('handles asynchronous paste failures', async () => {
+    const error = new Error('clipboard denied');
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const command = editCommands.find((item) => item.id === 'edit:paste');
+
+    command?.execute({
+      getInputHandler: () => ({ performPaste: vi.fn().mockRejectedValue(error) }),
+    } as never);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(warning).toHaveBeenCalledWith('[edit:paste] 붙이기 실패:', error);
   });
 
   it('keeps unrelated upstream edit commands available', () => {

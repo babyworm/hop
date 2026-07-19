@@ -1,10 +1,6 @@
-import { WasmBridge } from '@upstream/core/wasm-bridge';
-import { EventBus } from '@upstream/core/event-bus';
-import type { PageInfo } from '@upstream/core/types';
-import { VirtualScroll } from '@upstream/view/virtual-scroll';
-import { CanvasPool } from '@upstream/view/canvas-pool';
-import { ViewportManager } from '@upstream/view/viewport-manager';
-import { CoordinateSystem } from '@upstream/view/coordinate-system';
+import { EventBus, WasmBridge } from '@/upstream/core';
+import type { PageInfo } from '@/upstream/core';
+import { CanvasPool, CoordinateSystem, ViewportManager, VirtualScroll } from '@/upstream/view';
 import {
   applyCanvasDisplayLayout,
   inferCanvasDevicePixelRatio,

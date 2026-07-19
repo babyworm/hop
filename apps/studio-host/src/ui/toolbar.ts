@@ -1,10 +1,7 @@
-import type { WasmBridge } from '@/core/wasm-bridge';
-import type { EventBus } from '@/core/event-bus';
-import type { CharProperties, ParaProperties } from '@/core/types';
-import type { CommandDispatcher } from '@/command/dispatcher';
+import type { CharProperties, EventBus, FontSet, ParaProperties, WasmBridge } from '@/upstream/core';
+import { userSettings } from '@/upstream/core';
+import type { CommandDispatcher } from '@/upstream/commands';
 import { loadWebFonts } from '@/core/font-loader';
-import { userSettings } from '@/core/user-settings';
-import type { FontSet } from '@/core/user-settings';
 import { getLocalFonts } from '@/core/local-fonts';
 import { sanitizeAuthoringFontFamily } from '@/core/font-authoring-policy';
 import { getCustomSelectRoot, syncCustomSelect } from './custom-select';

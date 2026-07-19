@@ -1,5 +1,5 @@
-import type { WasmBridge } from '@upstream/core/wasm-bridge';
-import { PageRenderer as UpstreamPageRenderer } from '@upstream/view/page-renderer';
+import type { WasmBridge } from '@/upstream/core';
+import { PageRenderer as UpstreamPageRenderer } from '@/upstream/view';
 
 const RE_RENDER_DELAYS_MS = [200, 600];
 

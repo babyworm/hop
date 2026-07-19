@@ -2,14 +2,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fileCommands } from './file';
 
 const upstreamOpen = vi.hoisted(() => vi.fn());
+const upstreamOpenRecent = vi.hoisted(() => vi.fn());
 const upstreamSave = vi.hoisted(() => vi.fn());
+const upstreamSaveAs = vi.hoisted(() => vi.fn());
+const upstreamSaveAsCanExecute = vi.hoisted(() => vi.fn(() => true));
 const openPrintDialog = vi.hoisted(() => vi.fn());
 const openRecentDocumentsDialog = vi.hoisted(() => vi.fn());
 
-vi.mock('@upstream/command/commands/file', () => ({
+vi.mock('@/upstream/commands', () => ({
   fileCommands: [
     { id: 'file:open', label: 'Open', execute: upstreamOpen },
+    { id: 'file:open-recent', label: 'Open recent', execute: upstreamOpenRecent },
     { id: 'file:save', label: 'Save', execute: upstreamSave },
+    {
+      id: 'file:save-as',
+      label: 'Save as',
+      shortcutLabel: 'Ctrl+Shift+S',
+      canExecute: upstreamSaveAsCanExecute,
+      execute: upstreamSaveAs,
+    },
     { id: 'file:print', label: 'Print', execute: vi.fn() },
   ],
 }));
@@ -46,6 +57,36 @@ describe('file command desktop overrides', () => {
     expect(upstreamSave).toHaveBeenCalled();
   });
 
+  it('preserves upstream recent and save-as behavior outside the desktop bridge', async () => {
+    await command('file:open-recent').execute(services({ wasm: {} }) as never);
+    await command('file:save-as').execute(services({ wasm: {} }) as never);
+
+    expect(upstreamOpenRecent).toHaveBeenCalled();
+    expect(upstreamSaveAs).toHaveBeenCalled();
+  });
+
+  it('preserves upstream command metadata when replacing desktop behavior', () => {
+    const saveAs = command('file:save-as');
+
+    expect(saveAs).toMatchObject({
+      label: 'Save as',
+      shortcutLabel: 'Ctrl+Shift+S',
+      canExecute: upstreamSaveAsCanExecute,
+    });
+  });
+
+  it('reports desktop open failures instead of leaking an unhandled rejection', async () => {
+    const eventBus = { emit: vi.fn() };
+    const wasm = desktopBridge({
+      openDocumentFromDialog: vi.fn().mockRejectedValue(new Error('open failed')),
+    });
+
+    await command('file:open').execute(services({ wasm, eventBus }) as never);
+
+    expect(eventBus.emit).toHaveBeenCalledWith('desktop-status', '파일 열기 실패: open failed');
+    expect(globalThis.alert).toHaveBeenCalledWith('파일 열기에 실패했습니다:\nopen failed');
+  });
+
   it('emits saved events and status when desktop save succeeds', async () => {
     const result = {
       docId: 'doc-1',
@@ -79,6 +120,28 @@ describe('file command desktop overrides', () => {
     expect(globalThis.alert).toHaveBeenCalledWith('저장에 실패했습니다:\ndisk full');
   });
 
+  it('routes save-as through the dedicated desktop operation', async () => {
+    const result = {
+      docId: 'doc-1',
+      sourcePath: '/tmp/copy.hwp',
+      format: 'hwp',
+      revision: 3,
+      dirty: false,
+      warnings: [],
+    };
+    const eventBus = { emit: vi.fn() };
+    const saveDocumentFromCommand = vi.fn();
+    const saveDocumentAsFromCommand = vi.fn().mockResolvedValue(result);
+    const wasm = desktopBridge({ saveDocumentFromCommand, saveDocumentAsFromCommand });
+
+    await command('file:save-as').execute(services({ wasm, eventBus }) as never);
+
+    expect(saveDocumentFromCommand).not.toHaveBeenCalled();
+    expect(saveDocumentAsFromCommand).toHaveBeenCalledOnce();
+    expect(eventBus.emit).toHaveBeenCalledWith('desktop-document-saved', result);
+    expect(eventBus.emit).toHaveBeenCalledWith('desktop-status', '저장 완료');
+  });
+
   it('uses desktop print integration when available', async () => {
     const wasm = desktopBridge({
       printCurrentWebview: vi.fn().mockResolvedValue(undefined),
@@ -97,6 +160,18 @@ describe('file command desktop overrides', () => {
     await command('file:export-pdf').execute(services({ wasm: {} }) as never);
 
     expect(globalThis.alert).toHaveBeenCalledWith('PDF 내보내기는 HOP 데스크톱 앱에서 지원합니다.');
+  });
+
+  it('reports desktop PDF export failures', async () => {
+    const eventBus = { emit: vi.fn() };
+    const wasm = desktopBridge({
+      exportPdfFromCommand: vi.fn().mockRejectedValue(new Error('render failed')),
+    });
+
+    await command('file:export-pdf').execute(services({ wasm, eventBus }) as never);
+
+    expect(eventBus.emit).toHaveBeenCalledWith('desktop-status', 'PDF 내보내기 실패: render failed');
+    expect(globalThis.alert).toHaveBeenCalledWith('PDF 내보내기에 실패했습니다:\nrender failed');
   });
 
   it('does not expose a PDF export shortcut label', () => {

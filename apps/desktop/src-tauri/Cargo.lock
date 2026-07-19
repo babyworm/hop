@@ -784,6 +784,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
+name = "crunchy"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
+
+[[package]]
 name = "crypto-common"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1200,6 +1206,12 @@ name = "fastrand"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
+
+[[package]]
+name = "fax"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "caf1079563223d5d59d83c85886a56e586cfd5c1a26292e971a0fa266531ac5a"
 
 [[package]]
 name = "fdeflate"
@@ -1783,6 +1795,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "half"
+version = "2.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b"
+dependencies = [
+ "cfg-if",
+ "crunchy",
+ "zerocopy",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1834,11 +1857,11 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 name = "hop-desktop"
 version = "0.3.1"
 dependencies = [
+ "hop-rhwp-adapter",
  "objc2-app-kit",
  "objc2-foundation",
  "open",
  "pdf-writer",
- "rhwp",
  "serde",
  "serde_json",
  "svg2pdf",
@@ -1854,6 +1877,13 @@ dependencies = [
  "tempfile",
  "usvg",
  "uuid",
+]
+
+[[package]]
+name = "hop-rhwp-adapter"
+version = "0.1.0"
+dependencies = [
+ "rhwp",
 ]
 
 [[package]]
@@ -2137,6 +2167,7 @@ dependencies = [
  "moxcms",
  "num-traits",
  "png 0.18.1",
+ "tiff",
  "zune-core 0.5.1",
  "zune-jpeg 0.5.15",
 ]
@@ -2373,6 +2404,18 @@ checksum = "ce9729cc38c18d86123ab736fd2e7151763ba226ac2490ec092d1dd148825e32"
 dependencies = [
  "arrayvec",
  "euclid",
+ "smallvec",
+]
+
+[[package]]
+name = "kurbo"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b60dfc32f652b926df6192e55525b16d186c69d47876c3ead4da5cc9f8450e2"
+dependencies = [
+ "arrayvec",
+ "euclid",
+ "polycool",
  "smallvec",
 ]
 
@@ -3252,6 +3295,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "polycool"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50596ddc09eb5ad5f75cacd40209568e66df71baf86e1499a0e99c4cff12a5a6"
+dependencies = [
+ "arrayvec",
+]
+
+[[package]]
 name = "potential_utf"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3402,9 +3454,9 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.40.1"
+version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2474bd2e5029e7ccb6abb2ba48cf2383a333851dedf495901544281590c7da7f"
+checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
 dependencies = [
  "memchr",
 ]
@@ -3670,7 +3722,7 @@ dependencies = [
  "log",
  "pico-args",
  "rgb",
- "svgtypes",
+ "svgtypes 0.15.3",
  "tiny-skia",
  "usvg",
  "zune-jpeg 0.4.21",
@@ -3711,7 +3763,7 @@ dependencies = [
 
 [[package]]
 name = "rhwp"
-version = "0.7.13"
+version = "0.7.19"
 dependencies = [
  "base64 0.22.1",
  "blake3",
@@ -3727,13 +3779,14 @@ dependencies = [
  "paste",
  "pcx",
  "pdf-writer",
- "quick-xml 0.40.1",
+ "quick-xml 0.41.0",
  "serde",
  "serde_json",
  "snafu",
  "strum",
  "subsetter",
  "svg2pdf",
+ "svgtypes 0.16.1",
  "ttf-parser",
  "unicode-segmentation",
  "unicode-width",
@@ -4540,8 +4593,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "svg2pdf"
 version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e50dc062439cc1a396181059c80932a6e6bd731b130e674c597c0c8874b6df22"
+source = "git+https://github.com/planet6897/svg2pdf?rev=2caeb0a038f9128b79833d803b94c2667565c4da#2caeb0a038f9128b79833d803b94c2667565c4da"
 dependencies = [
  "fontdb",
  "image",
@@ -4564,6 +4616,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68c7541fff44b35860c1a7a47a7cadf3e4a304c457b58f9870d9706ece028afc"
 dependencies = [
  "kurbo 0.11.3",
+ "siphasher 1.0.2",
+]
+
+[[package]]
+name = "svgtypes"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "695b5790b3131dafa99b3bbfd25a216edb3d216dad9ca208d4657bfb8f2abc3d"
+dependencies = [
+ "kurbo 0.13.1",
  "siphasher 1.0.2",
 ]
 
@@ -5154,6 +5216,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiff"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b63feaf3343d35b6ca4d50483f94843803b0f51634937cc2ec519fc32232bc52"
+dependencies = [
+ "fax",
+ "flate2",
+ "half",
+ "quick-error",
+ "weezl",
+ "zune-jpeg 0.5.15",
+]
+
+[[package]]
 name = "time"
 version = "0.3.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5684,7 +5760,7 @@ dependencies = [
  "simplecss",
  "siphasher 1.0.2",
  "strict-num",
- "svgtypes",
+ "svgtypes 0.15.3",
  "tiny-skia-path",
  "unicode-bidi",
  "unicode-script",

@@ -4,7 +4,7 @@ use crate::state::{
     editable_core_from_bytes, AppState, DocumentFormat, DocumentOpenResult,
     ExternalModificationStatus, FileFingerprint, MutationResult, PageSvgResult, SaveResult,
 };
-use rhwp::DocumentCore;
+use hop_rhwp_adapter::DocumentCore;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};

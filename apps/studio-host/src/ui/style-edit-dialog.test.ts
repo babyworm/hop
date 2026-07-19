@@ -26,7 +26,7 @@ vi.mock('./dialog', () => ({
   },
 }));
 
-vi.mock('@upstream/ui/char-shape-dialog', () => ({
+vi.mock('@/upstream/ui', () => ({
   CharShapeDialog: class {
     onApply: ((mods: unknown) => void) | null = null;
 
@@ -36,10 +36,10 @@ vi.mock('@upstream/ui/char-shape-dialog', () => ({
 
     show = showMock;
   },
-}));
-
-vi.mock('@upstream/ui/para-shape-dialog', () => ({
-  ParaShapeDialog: class {},
+  ParaShapeDialog: class {
+    onApply: ((mods: unknown) => void) | null = null;
+    show = vi.fn();
+  },
 }));
 
 vi.mock('@/core/font-application', () => ({
@@ -119,6 +119,28 @@ describe('StyleEditDialog', () => {
 
     expect(createStyle).toHaveBeenCalled();
     expect(updateStyleShapes).toHaveBeenCalledWith(3, '{"fontId":19}', '{}');
+  });
+
+  it('does not let an older asynchronous font selection overwrite the latest selection', async () => {
+    let resolveFirst: (value: { fontId: number }) => void = () => undefined;
+    resolveCharShapeFontModsMock
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce({ fontId: 22 });
+    const dialog = new StyleEditDialog({} as never, {} as never, 'add') as unknown as {
+      openCharDialog: () => void;
+      charModsJson: string;
+      pendingCharMods: Promise<void> | null;
+    };
+
+    dialog.openCharDialog();
+    const charDialog = charDialogInstances.at(-1);
+    charDialog?.onApply?.({ fontName: 'First' });
+    charDialog?.onApply?.({ fontName: 'Second' });
+    await dialog.pendingCharMods;
+    resolveFirst({ fontId: 11 });
+    await Promise.resolve();
+
+    expect(JSON.parse(dialog.charModsJson)).toEqual({ fontId: 22 });
   });
 
   it('keeps the dialog open when the style name is blank', async () => {

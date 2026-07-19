@@ -12,7 +12,7 @@ const { showMock, resolveCharShapeFontModsMock, dialogInstances } = vi.hoisted((
   dialogInstances: [] as Array<{ onApply: ((mods: unknown) => void) | null }>,
 }));
 
-vi.mock('@upstream/command/commands/format', () => ({
+vi.mock('@/upstream/commands', () => ({
   formatCommands: [
     {
       id: 'format:char-shape',
@@ -27,7 +27,7 @@ vi.mock('@upstream/command/commands/format', () => ({
   ],
 }));
 
-vi.mock('@/ui/char-shape-dialog', () => ({
+vi.mock('@/upstream/ui', () => ({
   CharShapeDialog: class {
     onApply: ((mods: unknown) => void) | null = null;
     onClose: (() => void) | null = null;

@@ -1,21 +1,42 @@
 import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const expectedRhwpVersion = '0.7.13';
-const expectedRhwpCommit = 'b3e16ef212af81ef37d973ddb86d6816d3804642';
+const upstreamLock = JSON.parse(
+  await readFile(join(repoRoot, 'config/rhwp-upstream.json'), 'utf8'),
+);
+const expectedRhwpVersion = upstreamLock.version;
+const expectedRhwpCommit = upstreamLock.commit;
 
 test('HOP keeps the rhwp renderer baseline aligned across submodule, vendored WASM, and native lockfile', async () => {
   const wasmPackage = JSON.parse(
     await readFile(join(repoRoot, 'apps/studio-host/vendor/rhwp-core/package.json'), 'utf8'),
   );
   assert.equal(wasmPackage.version, expectedRhwpVersion);
-  const wasmBytes = await readFile(join(repoRoot, 'apps/studio-host/vendor/rhwp-core/rhwp_bg.wasm'));
-  assert.ok(wasmBytes.length > 0, 'vendored rhwp WASM should be present');
+  const provenance = JSON.parse(
+    await readFile(join(repoRoot, 'apps/studio-host/vendor/rhwp-core/PROVENANCE.json'), 'utf8'),
+  );
+  assert.equal(provenance.version, expectedRhwpVersion);
+  assert.equal(provenance.source, upstreamLock.source);
+  assert.equal(provenance.tag, upstreamLock.tag);
+  assert.equal(provenance.commit, expectedRhwpCommit);
+  assert.equal(provenance.rustToolchain, upstreamLock.rustToolchain);
+  assert.equal(provenance.wasmPackVersion, upstreamLock.wasmPackVersion);
+
+  for (const [fileName, expected] of Object.entries(provenance.artifacts)) {
+    const bytes = await readFile(join(repoRoot, 'apps/studio-host/vendor/rhwp-core', fileName));
+    assert.equal(bytes.length, expected.bytes, `${fileName} byte size should match provenance`);
+    assert.equal(
+      createHash('sha256').update(bytes).digest('hex'),
+      expected.sha256,
+      `${fileName} checksum should match provenance`,
+    );
+  }
 
   const pnpmLock = await readFile(join(repoRoot, 'pnpm-lock.yaml'), 'utf8');
   assert.doesNotMatch(pnpmLock, /@rhwp\/core@/);
@@ -26,17 +47,39 @@ test('HOP keeps the rhwp renderer baseline aligned across submodule, vendored WA
     new RegExp(`name = "rhwp"\\r?\\nversion = "${escapeRegExp(expectedRhwpVersion)}"`),
   );
 
+  const quickLookCargoLock = await readFile(
+    join(repoRoot, 'apps/desktop/quicklook/rust/Cargo.lock'),
+    'utf8',
+  );
+  assert.match(
+    quickLookCargoLock,
+    new RegExp(`name = "rhwp"\\r?\\nversion = "${escapeRegExp(expectedRhwpVersion)}"`),
+  );
+
   const upstreamDoc = await readFile(join(repoRoot, 'docs/architecture/UPSTREAM.md'), 'utf8');
-  assert.match(upstreamDoc, new RegExp(escapeRegExp(expectedRhwpCommit)));
-  assert.match(upstreamDoc, new RegExp(escapeRegExp(`v${expectedRhwpVersion}`)));
+  assert.match(upstreamDoc, /config\/rhwp-upstream\.json/);
 
   const submoduleStatus = git(['submodule', 'status', 'third_party/rhwp']).stdout.trim();
   assert.match(submoduleStatus, new RegExp(`^[ +-]?${expectedRhwpCommit} third_party/rhwp\\b`));
 });
 
+test('active HOP font catalog only references packaged font assets', async () => {
+  const fontCatalog = await readFile(
+    join(repoRoot, 'apps/studio-host/src/core/font-catalog.ts'),
+    'utf8',
+  );
+  const referencedFonts = Array.from(fontCatalog.matchAll(/['"]\/fonts\/([^'"]+)['"]/g),
+    (match) => match[1]);
+  assert.ok(referencedFonts.length > 0, 'font loader should declare packaged font assets');
+
+  for (const fileName of new Set(referencedFonts)) {
+    await access(join(repoRoot, 'assets/fonts', fileName));
+  }
+});
+
 test('HOP preserves upstream lineseg validation and auto-reflow on document load', async () => {
   const mainSource = await readFile(join(repoRoot, 'apps/studio-host/src/main.ts'), 'utf8');
-  const overrides = await readFile(join(repoRoot, 'apps/studio-host/hop-overrides.ts'), 'utf8');
+  const overrides = await readFile(join(repoRoot, 'config/rhwp-studio-overrides.json'), 'utf8');
   const validationModal = await readFile(join(repoRoot, 'apps/studio-host/src/ui/validation-modal.ts'), 'utf8');
 
   assert.match(mainSource, /showValidationModalIfNeeded/);
@@ -65,7 +108,7 @@ test('HOP preserves upstream lineseg validation and auto-reflow on document load
 test('HOP keeps unsaved-document guards on local file and new-document replacement paths', async () => {
   const mainSource = await readFile(join(repoRoot, 'apps/studio-host/src/main.ts'), 'utf8');
 
-  assert.match(mainSource, /import \{ confirmSaveBeforeReplacingDocument \} from ['"]@upstream\/command\/commands\/file['"]/);
+  assert.match(mainSource, /confirmSaveBeforeReplacingDocument[\s\S]*from ['"]@\/upstream\/commands['"]/);
   assert.match(mainSource, /async function canReplaceCurrentDocument\([\s\S]*confirmSaveBeforeReplacingDocument\(commandServices\)/);
   assert.match(mainSource, /const skipUnsavedGuard = input\.dataset\.skipUnsavedGuard === ['"]true['"]/);
   assert.match(mainSource, /await loadFile\(file, \{ skipUnsavedGuard \}\)/);
@@ -74,10 +117,13 @@ test('HOP keeps unsaved-document guards on local file and new-document replaceme
 });
 
 test('HOP defers editor engine and table command behavior to upstream rhwp', async () => {
-  const overrides = await readFile(join(repoRoot, 'apps/studio-host/hop-overrides.ts'), 'utf8');
+  const manifest = JSON.parse(
+    await readFile(join(repoRoot, 'config/rhwp-studio-overrides.json'), 'utf8'),
+  );
+  const overrideIds = manifest.overrides.map((entry) => entry.id);
 
-  assert.doesNotMatch(overrides, /['"]engine\//);
-  assert.doesNotMatch(overrides, /['"]command\/commands\/table['"]/);
+  assert.ok(!overrideIds.some((id) => id.startsWith('engine/')));
+  assert.ok(!overrideIds.includes('command/commands/table'));
 
   for (const path of [
     'apps/studio-host/src/engine/input-handler.ts',

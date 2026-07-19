@@ -69,6 +69,7 @@ export default defineConfig({
     alias: [
       ...createHopOverrides(hopSrc),
       { find: '@wasm/rhwp.js', replacement: rhwpWasmModule },
+      { find: '@/upstream', replacement: resolve(hopSrc, 'upstream') },
       { find: '@upstream', replacement: upstreamSrc },
       { find: '@', replacement: upstreamSrc },
     ],

@@ -1,5 +1,4 @@
-import type { CharProperties } from '@/core/types';
-import type { WasmBridge } from '@/core/wasm-bridge';
+import type { CharProperties, WasmBridge } from '@/upstream/core';
 import { loadWebFonts } from './font-loader';
 import { sanitizeAuthoringFontFamily } from './font-authoring-policy';
 

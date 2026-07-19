@@ -16,8 +16,6 @@ describe('shortcut-map', () => {
       .toBe('file:new-window');
     expect(matchShortcut(keyEvent({ key: 'o', metaKey: true, altKey: true }), defaultShortcuts))
       .toBe('file:open-recent');
-    expect(matchShortcut(keyEvent({ key: 't', metaKey: true, altKey: true }), defaultShortcuts))
-      .toBe('table:cell-selection-enter');
   });
 
   it('keeps Ctrl+E mapped to upstream delete instead of PDF export', () => {

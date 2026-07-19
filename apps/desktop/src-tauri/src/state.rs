@@ -1,5 +1,5 @@
 use crate::pending_open::PendingOpenPaths;
-use rhwp::DocumentCore;
+use hop_rhwp_adapter::DocumentCore;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;

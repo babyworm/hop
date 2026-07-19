@@ -1,7 +1,7 @@
 import {
   defaultShortcuts as upstreamDefaultShortcuts,
-} from '@upstream/command/shortcut-map';
-import type { ShortcutDef } from '@upstream/command/shortcut-map';
+} from '@/upstream/shortcuts';
+import type { ShortcutDef } from '@/upstream/shortcuts';
 import { hasPrimaryModifier } from '../core/platform';
 
 export type { ShortcutDef };
@@ -10,7 +10,6 @@ const hopShortcuts: [ShortcutDef, string][] = [
   [{ key: 'n', ctrl: true, shift: true }, 'file:new-window'],
   [{ key: 'o', ctrl: true, alt: true }, 'file:open-recent'],
   [{ key: 's', ctrl: true, shift: true }, 'file:save-as'],
-  [{ key: 't', ctrl: true, alt: true }, 'table:cell-selection-enter'],
 ];
 
 const hopShortcutKeys = new Set(hopShortcuts.map(([shortcut]) => shortcutKey(shortcut)));

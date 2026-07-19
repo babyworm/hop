@@ -1,5 +1,5 @@
-import { WasmBridge } from '@/core/wasm-bridge';
-import type { DocumentInfo } from '@/core/types';
+import { WasmBridge } from '@/upstream/core';
+import type { DocumentInfo } from '@/upstream/core';
 import { remove, stat } from '@tauri-apps/plugin-fs';
 import { finiteFileSize, readFileInChunks, writeFileInChunks } from './chunked-fs';
 

@@ -1,4 +1,4 @@
-import type { ValidationReport } from '@upstream/core/wasm-bridge';
+import type { ValidationReport } from '@/upstream/core';
 
 export type ValidationChoice = 'auto-fix' | 'as-is' | 'cancel';
 

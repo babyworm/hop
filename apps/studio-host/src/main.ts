@@ -3,40 +3,30 @@ import {
   applyDesktopChromePlatformState,
   installNonEditorContextMenuGuards,
 } from '@/core/desktop-chrome';
-import type { DocumentInfo } from '@/core/types';
-import { EventBus } from '@/core/event-bus';
+import { DocumentDirtyState, EventBus } from '@/upstream/core';
+import type { DocumentInfo } from '@/upstream/core';
 import { createDesktopDocument, setupDesktopEvents } from '@/core/desktop-events';
 import { detectDesktopPlatform, hasPrimaryModifier, hydrateDesktopPlatform } from '@/core/platform';
 import { CanvasView } from '@/view/canvas-view';
-import { InputHandler } from '@upstream/engine/input-handler';
+import {
+  CellSelectionRenderer,
+  InputHandler,
+  TableObjectRenderer,
+  TableResizeRenderer,
+} from '@/upstream/editor';
 import { Toolbar } from '@/ui/toolbar';
-import { MenuBar } from '@/ui/menu-bar';
+import { CommandPalette, ContextMenu, MenuBar } from '@/upstream/ui';
 import { loadWebFonts } from '@/core/font-loader';
+import { loadStoredLocalFonts } from '@/core/local-fonts';
 import { isSupportedDocumentPath } from '@/core/document-files';
-import { CommandRegistry } from '@/command/registry';
-import { CommandDispatcher } from '@/command/dispatcher';
-import type { EditorContext, CommandServices } from '@/command/types';
-import { fileCommands } from '@/command/commands/file';
-import { confirmSaveBeforeReplacingDocument } from '@upstream/command/commands/file';
-import { editCommands } from '@/command/commands/edit';
-import { viewCommands } from '@/command/commands/view';
-import { formatCommands } from '@/command/commands/format';
-import { insertCommands } from '@/command/commands/insert';
-import { tableCommands } from '@upstream/command/commands/table';
-import { pageCommands } from '@/command/commands/page';
-import { toolCommands } from '@/command/commands/tool';
-import { ContextMenu } from '@/ui/context-menu';
-import { CommandPalette } from '@/ui/command-palette';
+import { confirmSaveBeforeReplacingDocument } from '@/upstream/commands';
 import { showValidationModalIfNeeded } from '@/ui/validation-modal';
-import { DocumentDirtyState } from '@/core/document-dirty-state';
-import { CellSelectionRenderer } from '@upstream/engine/cell-selection-renderer';
-import { TableObjectRenderer } from '@upstream/engine/table-object-renderer';
-import { TableResizeRenderer } from '@upstream/engine/table-resize-renderer';
 import { Ruler } from '@/view/ruler';
 import { enhanceCustomSelects } from '@/ui/custom-select';
 import { UpdateNotice, type UpdateNoticeActions } from '@/ui/update-notice';
 import { HomeScreen } from '@/ui/home-screen';
 import type { DesktopBridgeApi } from '@/core/tauri-bridge';
+import { createCommandRuntime } from './host/command-runtime';
 
 const wasm = createBridge();
 const eventBus = new EventBus();
@@ -61,57 +51,22 @@ let toolbar: Toolbar | null = null;
 let ruler: Ruler | null = null;
 let homeScreen: HomeScreen | null = null;
 
-
-// ─── 커맨드 시스템 ─────────────────────────────
-const registry = new CommandRegistry();
-
-function getContext(): EditorContext {
-  const hasDocument = wasm.pageCount > 0;
-  return {
-    hasDocument,
-    hasSelection: inputHandler?.hasSelection() ?? false,
-    inTable: inputHandler?.isInTable() ?? false,
-    inCellSelectionMode: inputHandler?.isInCellSelectionMode() ?? false,
-    inTableObjectSelection: inputHandler?.isInTableObjectSelection() ?? false,
-    inPictureObjectSelection: inputHandler?.isInPictureObjectSelection() ?? false,
-    inField: inputHandler?.isInField() ?? false,
-    isEditable: true,
-    canUndo: inputHandler?.canUndo() ?? false,
-    canRedo: inputHandler?.canRedo() ?? false,
-    zoom: canvasView?.getViewportManager().getZoom() ?? 1.0,
-    showControlCodes: wasm.getShowControlCodes(),
-    isDirty: documentState.isDirty(),
-    sourceFormat: hasDocument ? (wasm.getSourceFormat() as 'hwp' | 'hwpx') : undefined,
-  };
-}
-
-const commandServices: CommandServices = {
-  eventBus,
-  wasm,
-  documentState,
-  getContext,
-  getInputHandler: () => inputHandler,
-  getViewportManager: () => canvasView?.getViewportManager() ?? null,
-};
-
-const dispatcher = new CommandDispatcher(registry, commandServices, eventBus);
-
-// 모든 내장 커맨드 등록
-registry.registerAll(fileCommands);
-registry.registerAll(editCommands);
-registry.registerAll(viewCommands);
-registry.registerAll(formatCommands);
-registry.registerAll(insertCommands);
-registry.registerAll(tableCommands);
-registry.registerAll(pageCommands);
-registry.registerAll(toolCommands);
-
 // 상태 바 요소
 const sbMessage = () => document.getElementById('sb-message')!;
 const sbPage = () => document.getElementById('sb-page')!;
 const sbSection = () => document.getElementById('sb-section')!;
 const sbZoomVal = () => document.getElementById('sb-zoom-val')!;
 const ZOOM_STEP = 0.1;
+
+const commandRuntime = createCommandRuntime({
+  wasm,
+  eventBus,
+  documentState,
+  getInputHandler: () => inputHandler,
+  getCanvasView: () => canvasView,
+  setStatusMessage: (message) => { sbMessage().textContent = message; },
+});
+const { dispatcher, registry, services: commandServices } = commandRuntime;
 
 async function initialize(): Promise<void> {
   const msg = sbMessage();
@@ -120,6 +75,7 @@ async function initialize(): Promise<void> {
     desktopPlatform = await hydrateDesktopPlatform();
     applyDesktopChromePlatformState(document, desktopPlatform);
     msg.textContent = '웹폰트 로딩 중...';
+    await loadStoredLocalFonts().catch(() => null);
     await loadWebFonts([]);  // CSS @font-face 등록 + CRITICAL 폰트만 로드
     msg.textContent = '문서 엔진 로딩 중...';
     await wasm.initialize();
@@ -158,6 +114,7 @@ async function initialize(): Promise<void> {
       canvasView.getVirtualScroll(),
       canvasView.getViewportManager(),
     );
+    inputHandler.setEditMode(commandRuntime.getEditMode());
 
     toolbar = new Toolbar(document.getElementById('style-bar')!, wasm, eventBus, dispatcher);
     toolbar.setEnabled(false);
@@ -181,7 +138,7 @@ async function initialize(): Promise<void> {
 
     enhanceCustomSelects(document);
 
-    new MenuBar(document.getElementById('menu-bar')!, eventBus, dispatcher);
+    new MenuBar(document.getElementById('menu-bar')!, eventBus, dispatcher, registry);
     installNonEditorContextMenuGuards(document);
 
     // 툴바 내 data-cmd 버튼 클릭 → 커맨드 디스패치

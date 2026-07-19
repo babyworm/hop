@@ -1,10 +1,7 @@
-import type { WasmBridge } from '@/core/wasm-bridge';
-import type { EventBus } from '@/core/event-bus';
-import type { CharProperties } from '@/core/types';
+import type { CharProperties, EventBus, ParaProperties, WasmBridge } from '@/upstream/core';
 import { resolveCharShapeFontMods } from '@/core/font-application';
 import { ModalDialog } from './dialog';
-import { CharShapeDialog } from '@upstream/ui/char-shape-dialog';
-import { ParaShapeDialog } from '@upstream/ui/para-shape-dialog';
+import { CharShapeDialog, ParaShapeDialog } from '@/upstream/ui';
 
 interface StyleInfo {
   id: number;
@@ -12,6 +9,11 @@ interface StyleInfo {
   englishName: string;
   type: number;
   nextStyleId: number;
+}
+
+interface StyleBaseInfo {
+  charProps?: CharProperties;
+  paraProps?: ParaProperties;
 }
 
 export class StyleEditDialog extends ModalDialog {
@@ -24,8 +26,10 @@ export class StyleEditDialog extends ModalDialog {
   private charModsJson = '{}';
   private paraModsJson = '{}';
   private pendingCharMods: Promise<void> | null = null;
+  private charModsRequestId = 0;
   private addMode: boolean;
   private styleInfo: StyleInfo;
+  private baseInfo: StyleBaseInfo;
 
   onSave?: () => void;
   onClose?: () => void;
@@ -35,10 +39,12 @@ export class StyleEditDialog extends ModalDialog {
     private eventBus: EventBus,
     mode: 'add' | 'edit',
     styleInfo?: StyleInfo,
+    baseInfo?: StyleBaseInfo,
   ) {
     super(mode === 'add' ? '스타일 추가하기' : '스타일 편집하기', 480);
     this.addMode = mode === 'add';
     this.styleInfo = styleInfo ?? { id: -1, name: '새 스타일', englishName: '', type: 0, nextStyleId: 0 };
+    this.baseInfo = baseInfo ?? {};
   }
 
   protected createBody(): HTMLElement {
@@ -186,7 +192,7 @@ export class StyleEditDialog extends ModalDialog {
       dialog.onApply = (mods: object) => {
         this.paraModsJson = JSON.stringify(mods);
       };
-      dialog.show({});
+      dialog.show(this.baseInfo.paraProps ?? {});
       return;
     }
     try {
@@ -204,11 +210,12 @@ export class StyleEditDialog extends ModalDialog {
   private openCharDialog(): void {
     const dialog = new CharShapeDialog(this.wasm, this.eventBus);
     dialog.onApply = (mods: Partial<CharProperties>) => {
-      this.pendingCharMods = this.storeCharMods(mods);
+      const requestId = ++this.charModsRequestId;
+      this.pendingCharMods = this.storeCharMods(mods, requestId);
     };
 
     if (this.addMode && this.styleInfo.id < 0) {
-      dialog.show({});
+      dialog.show(this.baseInfo.charProps ?? {});
       return;
     }
 
@@ -220,8 +227,9 @@ export class StyleEditDialog extends ModalDialog {
     }
   }
 
-  private async storeCharMods(mods: Partial<CharProperties>): Promise<void> {
-    this.charModsJson = JSON.stringify(await resolveCharShapeFontMods(this.wasm, mods));
+  private async storeCharMods(mods: Partial<CharProperties>, requestId: number): Promise<void> {
+    const resolved = await resolveCharShapeFontMods(this.wasm, mods);
+    if (requestId === this.charModsRequestId) this.charModsJson = JSON.stringify(resolved);
   }
 
   protected async onConfirm(): Promise<void | boolean> {

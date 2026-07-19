@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "version": "0.7.19",
+    "commit": "f137b4c9468eaff5bb43e25108e9c9d39a2ed15b",
+    "counterparts": {
+      "core/font-loader": "245efa5408b0c7a91a07ef8c30625b71ac46f2820a214fe5e7f987d9fbce96f7",
+      "core/local-fonts": "2b56048dc4f567de53a22626bc3343debf0004ed410aad9d24161bf01d993195",
+      "command/shortcut-map": "89883af962df89ddbeef577d4d9f46713090de117ad0a343e392e9e2b8fcff44",
+      "command/commands/edit": "47b7d0294f228f381a2d67df805bb94e177bdd0d75316ece959bc1d2598bb916",
+      "command/commands/format": "9ed772a3b186b88933eed69396f474d2958ad457c2b7061dee7f87929b3e49c9",
+      "command/commands/file": "4e767922d868ae93a1ff1bc253be61da5bdf32e1b7108b75c932a987f4da9d84",
+      "ui/about-dialog": "9cbb79eef1e407706899c2989147f3da3f82678a39fe5b67923a456d5157c84b",
+      "ui/dialog": "ec55feb51d76ab90094bbc04ba7d2c5eacb25dee4ba7e8dd5c1c88e746944afd",
+      "ui/style-edit-dialog": "c3f269317c6345954df99a9ba50669aa2658f0773d4d3cdc15d2abc59d90b734",
+      "ui/toolbar": "9e85e9429bd28167cf4ac12c365abb4fce984770de058a3022b05a69d1fe24ea",
+      "ui/validation-modal": "26487429dd0cf320bbaadc8a23319a397c3f06ab2ee8d2a6ccfe915eda17a523",
+      "view/canvas-view": "35d174a281ec4fe6c64b54d33a59855a32717fabc067276817cf94f2341338d3",
+      "view/ruler": "43e4284348662ba6164771c3597a33a619f18a85471b677886c55284bca70dbb"
+    },
+    "assets": {
+      "public/images/icon_small_ko_dark.svg": "9d02ea0b8c1d399a89290d97613759826f19f3e3f392b6d79dcf6109e7e15fa6"
+    }
+  },
+  "overrides": [
+    {
+      "id": "core/font-loader",
+      "strategy": "fork",
+      "reason": "HOP packages its own redistributable font catalog and authoring policy."
+    },
+    {
+      "id": "core/font-application",
+      "strategy": "contribution",
+      "reason": "HOP normalizes desktop font choices before applying upstream character properties."
+    },
+    {
+      "id": "core/font-authoring-policy",
+      "strategy": "contribution",
+      "reason": "HOP owns the restricted-font authoring and fallback policy."
+    },
+    {
+      "id": "core/local-fonts",
+      "strategy": "extension",
+      "reason": "Delegates browser behavior upstream and adds Tauri native font discovery and byte loading."
+    },
+    {
+      "id": "core/bridge-factory",
+      "strategy": "contribution",
+      "reason": "Selects the HOP desktop bridge only inside a Tauri runtime."
+    },
+    {
+      "id": "core/document-files",
+      "strategy": "contribution",
+      "reason": "Defines the document formats exposed by the HOP desktop product."
+    },
+    {
+      "id": "core/desktop-chrome",
+      "strategy": "contribution",
+      "reason": "Applies desktop-only window chrome and context-menu behavior."
+    },
+    {
+      "id": "core/desktop-events",
+      "strategy": "contribution",
+      "reason": "Connects Tauri document sessions and window events to the editor host."
+    },
+    {
+      "id": "core/platform",
+      "strategy": "contribution",
+      "reason": "Provides cross-platform desktop modifier and platform detection."
+    },
+    {
+      "id": "core/tauri-bridge",
+      "strategy": "contribution",
+      "reason": "Owns the typed native filesystem, session, save, export and print boundary."
+    },
+    {
+      "id": "command/shortcut-map",
+      "strategy": "extension",
+      "reason": "Adds HOP desktop shortcuts while preserving upstream shortcut assignments."
+    },
+    {
+      "id": "command/commands/edit",
+      "strategy": "extension",
+      "reason": "Wraps selected upstream edit commands with HOP clipboard behavior."
+    },
+    {
+      "id": "command/commands/format",
+      "strategy": "extension",
+      "reason": "Wraps upstream formatting with HOP font normalization."
+    },
+    {
+      "id": "command/commands/file",
+      "strategy": "extension",
+      "reason": "Replaces native file actions while falling back to upstream web actions."
+    },
+    {
+      "id": "ui/about-dialog",
+      "strategy": "extension",
+      "reason": "Subclasses the upstream dialog to add the HOP product version."
+    },
+    {
+      "id": "ui/custom-select",
+      "strategy": "contribution",
+      "reason": "Provides HOP desktop select styling and interaction."
+    },
+    {
+      "id": "ui/dialog",
+      "strategy": "fork",
+      "reason": "Preserves HOP modal focus and desktop interaction behavior."
+    },
+    {
+      "id": "ui/home-screen",
+      "strategy": "contribution",
+      "reason": "Provides HOP recent-file and desktop document entry flows."
+    },
+    {
+      "id": "ui/preview-svg",
+      "strategy": "contribution",
+      "reason": "Provides HOP preview rendering helpers."
+    },
+    {
+      "id": "ui/print-dialog",
+      "strategy": "contribution",
+      "reason": "Owns HOP native print and PDF export choices."
+    },
+    {
+      "id": "ui/recent-documents-dialog",
+      "strategy": "contribution",
+      "reason": "Owns HOP native recent-document interaction."
+    },
+    {
+      "id": "ui/style-edit-dialog",
+      "strategy": "fork",
+      "reason": "Preserves HOP font normalization in style editing until upstream exposes an apply hook."
+    },
+    {
+      "id": "ui/toolbar",
+      "strategy": "fork",
+      "reason": "Preserves HOP authoring-font policy and asynchronous desktop font loading."
+    },
+    {
+      "id": "ui/update-notice",
+      "strategy": "contribution",
+      "reason": "Owns HOP desktop updater presentation and actions."
+    },
+    {
+      "id": "ui/validation-modal",
+      "strategy": "fork",
+      "reason": "Adds HOP document-repair confirmation and cancellation policy."
+    },
+    {
+      "id": "view/canvas-view",
+      "strategy": "fork",
+      "reason": "Composes HOP page positioning and renderer recovery behavior."
+    },
+    {
+      "id": "view/ruler",
+      "strategy": "fork",
+      "reason": "Preserves HOP table-aware ruler behavior and page positioning."
+    },
+    {
+      "id": "styles/about-dialog.css",
+      "strategy": "contribution",
+      "reason": "Styles the HOP version added to the upstream dialog."
+    },
+    {
+      "id": "styles/custom-select.css",
+      "strategy": "contribution",
+      "reason": "Styles the HOP custom select contribution."
+    },
+    {
+      "id": "styles/font-set-dialog.css",
+      "strategy": "contribution",
+      "reason": "Styles HOP font set controls."
+    },
+    {
+      "id": "styles/home-screen.css",
+      "strategy": "contribution",
+      "reason": "Styles the HOP desktop home screen."
+    },
+    {
+      "id": "styles/update-notice.css",
+      "strategy": "contribution",
+      "reason": "Styles HOP update notices."
+    },
+    {
+      "id": "styles/recent-documents-dialog.css",
+      "strategy": "contribution",
+      "reason": "Styles HOP recent-document UI."
+    }
+  ]
+}
