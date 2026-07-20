@@ -1,0 +1,224 @@
+{
+  "schemaVersion": 1,
+  "dataVersion": "2026-07-19",
+  "sources": {
+    "libhangul": {
+      "version": "a34aef73378c0992316861bbf13fc914ee7577d9",
+      "url": "https://raw.githubusercontent.com/libhangul/libhangul/a34aef73378c0992316861bbf13fc914ee7577d9/data/hanja/hanja.txt",
+      "sha256": "dd44dcc856cf542b1022d0f39c2e9b9f8805fdcc5923be80f04849ed97ce0996",
+      "license": "BSD-3-Clause"
+    },
+    "unihan": {
+      "version": "17.0.0",
+      "url": "https://www.unicode.org/Public/17.0.0/ucd/Unihan.zip",
+      "sha256": "f7a48b2b545acfaa77b2d607ae28747404ce02baefee16396c5d2d7a8ef34b5e",
+      "license": "Unicode-3.0"
+    },
+    "krdict": {
+      "version": "2026-07-19",
+      "url": "https://krdict.korean.go.kr/dicBatchDownload?seq=211",
+      "sha256": "13ff666e78363e3abc73cdb2e582a6776ddfa7a120f18c0b79bd03fa56d860f9",
+      "license": "CC-BY-SA-2.0-KR"
+    },
+    "stdict": {
+      "version": "2026-06-05",
+      "url": "https://stdict.korean.go.kr/",
+      "snapshotUrl": "https://github.com/spellcheck-ko/korean-dict-nikl/tree/42c0d01889f34536e9cf94fe57f62bd2055b1bde/stdict",
+      "snapshotCommit": "42c0d01889f34536e9cf94fe57f62bd2055b1bde",
+      "supplementSha256": "7ff0c9390d96cefc614380ef9ee989709130d7ad9538724bbc9a84c8f10f3104",
+      "license": "CC-BY-SA-2.0-KR"
+    }
+  },
+  "characterDatabase": {
+    "file": "characters.json",
+    "license": "BSD-3-Clause AND Unicode-3.0",
+    "sha256": "41741ced4b00145e63e94e788bc65ca107525fefe3b990bde956c0b8958940c7",
+    "bytes": 3664346,
+    "entries": 27826,
+    "entriesWithKoreanMeaning": 7374,
+    "entriesWithEnglishDefinition": 20873,
+    "educationHanja": 1800,
+    "personalNameHanja": 6367
+  },
+  "readingIndex": {
+    "file": "readings.json",
+    "license": "BSD-3-Clause AND Unicode-3.0",
+    "sha256": "2cc106b2ce4d50ef85faf0a54232c4897d31370c58080681ca1f50424e63071c",
+    "bytes": 53034,
+    "entries": 494,
+    "candidates": 8175
+  },
+  "wordDatabase": {
+    "license": "CC-BY-SA-2.0-KR",
+    "sourceBits": {
+      "libhangul": 1,
+      "krdict": 2,
+      "stdict": 4
+    },
+    "files": [
+      {
+        "shard": "g",
+        "file": "words-g.json",
+        "sha256": "76593feae5efec1c1cc1305bd3a22186fa78fa2999f1a8cc45f750555ef26dfd",
+        "bytes": 4341834,
+        "entries": 38561,
+        "candidates": 47138
+      },
+      {
+        "shard": "gg",
+        "file": "words-gg.json",
+        "sha256": "7350868fc85be6c39e84e839d25d9f4721083e0b7759c10a22f227950eb5783d",
+        "bytes": 37684,
+        "entries": 337,
+        "candidates": 337
+      },
+      {
+        "shard": "n",
+        "file": "words-n.json",
+        "sha256": "35ac01466370f163d016682eb2e14b1bf74bd52589fcedf9f8193397ecc49f40",
+        "bytes": 943856,
+        "entries": 9090,
+        "candidates": 10604
+      },
+      {
+        "shard": "d",
+        "file": "words-d.json",
+        "sha256": "9fcfb93ca796938510e3273f14e67e90d4adb49803b87987cf4c8fb5063299be",
+        "bytes": 1607610,
+        "entries": 14992,
+        "candidates": 18182
+      },
+      {
+        "shard": "dd",
+        "file": "words-dd.json",
+        "sha256": "6dd21027dfd1dd3d47ed8d7d45c004029f48bd50053543587d31e46612e48702",
+        "bytes": 29360,
+        "entries": 292,
+        "candidates": 296
+      },
+      {
+        "shard": "r",
+        "file": "words-r.json",
+        "sha256": "d4ac85d3b160b138d3022758652a08d4877704ee66fa91865a71b19d169a1fc8",
+        "bytes": 163119,
+        "entries": 3149,
+        "candidates": 3454
+      },
+      {
+        "shard": "m",
+        "file": "words-m.json",
+        "sha256": "4b94cf061050af247582707072244a4ee26701a0bff0f722142dd96ea82deab4",
+        "bytes": 1663650,
+        "entries": 15421,
+        "candidates": 17851
+      },
+      {
+        "shard": "b",
+        "file": "words-b.json",
+        "sha256": "7b0d4b0de4d5ae70352127f635f6818e4be759d4b41fc4ba45b856b79732cd01",
+        "bytes": 2535282,
+        "entries": 23245,
+        "candidates": 27650
+      },
+      {
+        "shard": "bb",
+        "file": "words-bb.json",
+        "sha256": "c68904e44254d6c7d656cbe753e0c2b3911e53e3d9733c8ce2ef037d8b1d3b58",
+        "bytes": 12804,
+        "entries": 129,
+        "candidates": 129
+      },
+      {
+        "shard": "s",
+        "file": "words-s.json",
+        "sha256": "dbfc44135cde060b3620503431b803bf0b80f9ec77efe6e47d083505e3ddb346",
+        "bytes": 3816477,
+        "entries": 35005,
+        "candidates": 44562
+      },
+      {
+        "shard": "ss",
+        "file": "words-ss.json",
+        "sha256": "8016ea6781932c5f3c5b8183b8cc089316aedbe726edb1f561617a0e031adaee",
+        "bytes": 69382,
+        "entries": 737,
+        "candidates": 774
+      },
+      {
+        "shard": "ng",
+        "file": "words-ng.json",
+        "sha256": "7e38b3cb6cb7123fdbcaf042d62c073c25e96d54485bf6cf05f6c73eedd8277a",
+        "bytes": 4896730,
+        "entries": 46319,
+        "candidates": 56530
+      },
+      {
+        "shard": "j",
+        "file": "words-j.json",
+        "sha256": "d1e8168d5d243050131a10c466c630a96d3cca8649f715694b83991145f47c4f",
+        "bytes": 3860377,
+        "entries": 35667,
+        "candidates": 44885
+      },
+      {
+        "shard": "jj",
+        "file": "words-jj.json",
+        "sha256": "02d61133f98afea875f8f6105dd07a789741a9b2639ffa330c77366c252d319b",
+        "bytes": 8910,
+        "entries": 88,
+        "candidates": 90
+      },
+      {
+        "shard": "ch",
+        "file": "words-ch.json",
+        "sha256": "0390fb73ad5f67f18adf86a1e41633a030dd9c884a6f6ef4b1878890c6494bac",
+        "bytes": 1836005,
+        "entries": 16738,
+        "candidates": 20153
+      },
+      {
+        "shard": "k",
+        "file": "words-k.json",
+        "sha256": "90da3f5f273185111f0f8c69fac99c90bf22772b18fa5c0163245d342c2c9452",
+        "bytes": 92242,
+        "entries": 1236,
+        "candidates": 1250
+      },
+      {
+        "shard": "t",
+        "file": "words-t.json",
+        "sha256": "7287b8d13e2a1604fd4a87270db6adf2158cc4fb757d7abc4726301ba95cb3fd",
+        "bytes": 694225,
+        "entries": 6627,
+        "candidates": 7483
+      },
+      {
+        "shard": "p",
+        "file": "words-p.json",
+        "sha256": "3ff4118db652ea421e110f7c09f26833533bd9cdbcaf2443e49eeab0aa0acfc0",
+        "bytes": 847086,
+        "entries": 8043,
+        "candidates": 9176
+      },
+      {
+        "shard": "h",
+        "file": "words-h.json",
+        "sha256": "8239166a2ccd7b0f885d9d49ad3a0c429fa14993d6937922a9ed7b2a82baf9e7",
+        "bytes": 2235734,
+        "entries": 21083,
+        "candidates": 24990
+      },
+      {
+        "shard": "other",
+        "file": "words-other.json",
+        "sha256": "d9f7f960fd7414f8ec65a08b02bb1a776e6f1a557f95da497169fcdf6e081a57",
+        "bytes": 1593,
+        "entries": 27,
+        "candidates": 27
+      }
+    ],
+    "entries": 276786,
+    "candidates": 335561
+  },
+  "notices": "THIRD_PARTY_NOTICES.md"
+}
