@@ -15,6 +15,7 @@ import { stdictSnapshot } from './lib/stdict-supplement.mjs';
 
 const containsHanPattern = /\p{Script=Han}/u;
 const singleHanPattern = /^\p{Script=Han}$/u;
+const safeOriginPattern = /^[\p{Script=Han}가-힣A-Za-z0-9·ㆍ-]+$/u;
 
 export async function verifyHanjaDatabase() {
   const manifest = await readJson(join(outputDir, 'manifest.json'));
@@ -26,6 +27,7 @@ export async function verifyHanjaDatabase() {
   assert.equal(manifest.wordDatabase.license, 'CC-BY-SA-2.0-KR');
   assert.equal(manifest.notices, 'THIRD_PARTY_NOTICES.md');
   assert.deepEqual(manifest.wordDatabase.sourceBits, { libhangul: 1, krdict: 2, stdict: 4 });
+  assert.deepEqual(manifest.wordDatabase.initialShards, shardNames.slice(0, 19));
   assert.deepEqual(manifest.wordDatabase.files.map((file) => file.shard), shardNames);
 
   const stdictContent = await readFile(stdictSupplementPath);
@@ -103,11 +105,18 @@ function verifyCharacters(characters) {
 function verifyWordShard(entries, shard, fixtures) {
   let candidateCount = 0;
   for (const [word, candidates] of Object.entries(entries)) {
+    assert.match(word, /^[가-힣]+$/u);
     assert.equal(shardForWord(word), shard, `${word} belongs in another shard`);
     assert.ok(candidates.length > 0);
     assert.equal(new Set(candidates.map((candidate) => candidate.hanja)).size, candidates.length);
     for (const candidate of candidates) {
       assert.match(candidate.hanja, containsHanPattern);
+      assert.match(candidate.hanja, safeOriginPattern);
+      assert.equal(
+        Array.from(candidate.hanja).length,
+        Array.from(word).length,
+        `${word} and ${candidate.hanja} must have one-to-one character alignment`,
+      );
       assert.ok(candidate.source >= 1 && (candidate.source & ~7) === 0);
       for (const field of ['definitions', 'partsOfSpeech', 'levels', 'targetCodes', 'stdictTargetCodes']) {
         if (field in candidate) assert.ok(Array.isArray(candidate[field]) && candidate[field].length > 0);

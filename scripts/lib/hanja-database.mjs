@@ -177,6 +177,7 @@ export async function writeDatabase(characters, words) {
     wordDatabase: {
       license: 'CC-BY-SA-2.0-KR',
       sourceBits: { libhangul: 1, krdict: 2, stdict: 4 },
+      initialShards: shardNames.slice(0, 19),
       files: wordFiles,
       entries: wordFiles.reduce((sum, file) => sum + file.entries, 0),
       candidates: wordFiles.reduce((sum, file) => sum + file.candidates, 0),

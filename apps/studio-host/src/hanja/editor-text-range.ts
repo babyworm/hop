@@ -1,8 +1,10 @@
 import type { CommandServices } from '@/upstream/commands';
 import type { DocumentPosition, WasmBridge } from '@/upstream/core';
+import { currentDocumentGeneration } from '../core/document-generation';
 import type { EditCommand, TextMutationEffects } from '../upstream/editor';
 import {
   DeleteTextCommand,
+  getInputHandlerCursorAccess,
   IMMEDIATE_TEXT_MUTATION_EFFECTS,
   InsertTextCommand,
   NO_TEXT_MUTATION_EFFECTS,
@@ -12,17 +14,15 @@ interface ConversionInputHandler {
   getSelection(): { start: DocumentPosition; end: DocumentPosition } | null;
   getCursorPosition(): DocumentPosition;
   executeOperation(descriptor: { kind: 'command'; command: EditCommand }): void;
-  cursor?: {
-    clearSelection(): void;
-    isInHeaderFooter?(): boolean;
-    isInFootnote?(): boolean;
-  };
 }
 
 export interface HanjaConversionSource {
   text: string;
+  originalText: string;
+  rangeLength: number;
   start: DocumentPosition;
   end: DocumentPosition;
+  documentGeneration: number;
   fingerprint: string;
   selected: boolean;
 }
@@ -41,16 +41,17 @@ export function findHangulWordRange(
   paragraphText: string,
   cursorOffset: number,
 ): { start: number; end: number; text: string } | null {
-  const offset = Math.max(0, Math.min(paragraphText.length, cursorOffset));
+  const characters = Array.from(paragraphText);
+  const offset = Math.max(0, Math.min(characters.length, cursorOffset));
   let index = offset;
-  if (!isHangulAt(paragraphText, index) && isHangulAt(paragraphText, index - 1)) index -= 1;
-  if (!isHangulAt(paragraphText, index)) return null;
+  if (!isHangulAt(characters, index) && isHangulAt(characters, index - 1)) index -= 1;
+  if (!isHangulAt(characters, index)) return null;
 
   let start = index;
   let end = index + 1;
-  while (start > 0 && isHangulAt(paragraphText, start - 1)) start -= 1;
-  while (end < paragraphText.length && isHangulAt(paragraphText, end)) end += 1;
-  return { start, end, text: paragraphText.slice(start, end) };
+  while (start > 0 && isHangulAt(characters, start - 1)) start -= 1;
+  while (end < characters.length && isHangulAt(characters, end)) end += 1;
+  return { start, end, text: characters.slice(start, end).join('') };
 }
 
 export function readConversionSource(
@@ -60,7 +61,8 @@ export function readConversionSource(
   if (!inputHandler) {
     throw new HanjaEditorRangeError('no-editor', '변환할 문서가 없습니다.');
   }
-  if (inputHandler.cursor?.isInHeaderFooter?.() || inputHandler.cursor?.isInFootnote?.()) {
+  const cursorAccess = getInputHandlerCursorAccess(inputHandler);
+  if (cursorAccess?.isInHeaderFooter?.() || cursorAccess?.isInFootnote?.()) {
     throw new HanjaEditorRangeError(
       'unsupported-context',
       '머리말·꼬리말·각주에서는 아직 한자 변환을 지원하지 않습니다.',
@@ -105,13 +107,19 @@ export function replaceConversionSource(
   inputHandler: ConversionInputHandler,
   source: HanjaConversionSource,
   replacement: string,
-): void {
-  if (!replacement || replacement === source.text) return;
-  inputHandler.cursor?.clearSelection();
+): boolean {
+  if (!replacement || replacement === source.text) return false;
+  getInputHandlerCursorAccess(inputHandler)?.clearSelection?.();
   inputHandler.executeOperation({
     kind: 'command',
-    command: new ReplaceTextCommand(source.start, source.text, replacement),
+    command: new ReplaceTextCommand(
+      source.start,
+      source.originalText,
+      source.rangeLength,
+      replacement,
+    ),
   });
+  return true;
 }
 
 class ReplaceTextCommand implements EditCommand {
@@ -119,15 +127,23 @@ class ReplaceTextCommand implements EditCommand {
   readonly timestamp = Date.now();
   private readonly deleteCommand: DeleteTextCommand;
   private readonly insertCommand: InsertTextCommand;
+  private readonly deleteReplacementCommand: DeleteTextCommand;
   private effects: TextMutationEffects = NO_TEXT_MUTATION_EFFECTS;
 
   constructor(
     private readonly position: DocumentPosition,
     private readonly originalText: string,
+    private readonly originalLength: number,
     private readonly replacementText: string,
   ) {
-    this.deleteCommand = new DeleteTextCommand(position, originalText.length, 'forward', originalText);
+    this.deleteCommand = new DeleteTextCommand(position, originalLength, 'forward', originalText);
     this.insertCommand = new InsertTextCommand(position, replacementText);
+    this.deleteReplacementCommand = new DeleteTextCommand(
+      position,
+      characterCount(replacementText),
+      'forward',
+      replacementText,
+    );
   }
 
   execute(wasm: WasmBridge): DocumentPosition {
@@ -137,14 +153,14 @@ class ReplaceTextCommand implements EditCommand {
       this.deleteCommand.consumeTextMutationEffects(),
       this.insertCommand.consumeTextMutationEffects(),
     );
-    return { ...this.position, charOffset: this.position.charOffset + this.replacementText.length };
+    return { ...this.position, charOffset: this.position.charOffset + characterCount(this.replacementText) };
   }
 
   undo(wasm: WasmBridge): DocumentPosition {
-    this.insertCommand.undo(wasm);
+    this.deleteReplacementCommand.execute(wasm);
     this.deleteCommand.undo(wasm);
     this.effects = IMMEDIATE_TEXT_MUTATION_EFFECTS;
-    return { ...this.position, charOffset: this.position.charOffset + this.originalText.length };
+    return { ...this.position, charOffset: this.position.charOffset + this.originalLength };
   }
 
   consumeTextMutationEffects(): TextMutationEffects {
@@ -178,7 +194,15 @@ function sourceFrom(
   if (!/^[가-힣]+$/u.test(normalized)) {
     throw new HanjaEditorRangeError('no-hangul', '한글 음절로 이루어진 단어만 변환할 수 있습니다.');
   }
-  const source = { text: normalized, start: { ...start }, end: { ...end }, selected };
+  const source = {
+    text: normalized,
+    originalText: text,
+    rangeLength: end.charOffset - start.charOffset,
+    start: { ...start },
+    end: { ...end },
+    documentGeneration: currentDocumentGeneration(),
+    selected,
+  };
   return { ...source, fingerprint: fingerprint(source) };
 }
 
@@ -256,6 +280,9 @@ function assertSameTextContainer(start: DocumentPosition, end: DocumentPosition)
 function fingerprint(source: Omit<HanjaConversionSource, 'fingerprint'>): string {
   return JSON.stringify({
     text: source.text,
+    originalText: source.originalText,
+    rangeLength: source.rangeLength,
+    documentGeneration: source.documentGeneration,
     selected: source.selected,
     start: positionKey(source.start),
     end: positionKey(source.end),
@@ -276,6 +303,10 @@ function positionKey(position: DocumentPosition): object {
   };
 }
 
-function isHangulAt(value: string, index: number): boolean {
+function isHangulAt(value: readonly string[], index: number): boolean {
   return index >= 0 && index < value.length && /[가-힣]/u.test(value[index] ?? '');
+}
+
+function characterCount(value: string): number {
+  return Array.from(value).length;
 }

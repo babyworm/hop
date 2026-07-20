@@ -3,6 +3,7 @@ import { readZipEntries } from './zip-reader.mjs';
 const hanCharacterPattern = /^\p{Script=Han}$/u;
 const containsHanPattern = /\p{Script=Han}/u;
 const hangulSyllablePattern = /^[가-힣]$/u;
+const hangulWordPattern = /^[가-힣]+$/u;
 const safeOriginPattern = /^[\p{Script=Han}가-힣A-Za-z0-9·ㆍ-]+$/u;
 const unihanProperties = new Set([
   'kHangul',
@@ -26,7 +27,7 @@ export function parseLibhangul(content) {
 
     if (hangulSyllablePattern.test(key) && isSingleHan(value)) {
       addCharacter(characters, value, key, description);
-    } else if (containsHanPattern.test(value)) {
+    } else if (hangulWordPattern.test(key) && isConvertibleOrigin(key, value)) {
       addWordCandidate(words, key, value, 1);
     }
   }
@@ -85,15 +86,18 @@ export function applyStdictSupplement(words, supplement) {
 
 function applyKrdictEntry(words, entry) {
   const lemma = featureValues(entry?.Lemma, 'writtenForm')[0];
-  if (!lemma) return;
-  const origins = featureValues(entry, 'origin').map(cleanOrigin).filter((origin) => isConvertibleOrigin(lemma, origin));
+  const normalizedLemma = lemma ? normalize(lemma) : '';
+  if (!hangulWordPattern.test(normalizedLemma)) return;
+  const origins = featureValues(entry, 'origin')
+    .map(cleanOrigin)
+    .filter((origin) => isConvertibleOrigin(normalizedLemma, origin));
   const definitions = asArray(entry?.Sense).flatMap((sense) => featureValues(sense, 'definition'));
   const partsOfSpeech = featureValues(entry, 'partOfSpeech');
   const levels = featureValues(entry, 'vocabularyLevel');
   const targetCode = entry?.val === undefined ? undefined : String(entry.val);
 
   for (const origin of unique(origins)) {
-    const candidate = addWordCandidate(words, normalize(lemma), origin, 2);
+    const candidate = addWordCandidate(words, normalizedLemma, origin, 2);
     addAll(candidate.definitions, definitions);
     addAll(candidate.partsOfSpeech, partsOfSpeech);
     addAll(candidate.levels, levels);

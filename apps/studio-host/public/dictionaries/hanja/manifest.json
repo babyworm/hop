@@ -55,14 +55,35 @@
       "krdict": 2,
       "stdict": 4
     },
+    "initialShards": [
+      "g",
+      "gg",
+      "n",
+      "d",
+      "dd",
+      "r",
+      "m",
+      "b",
+      "bb",
+      "s",
+      "ss",
+      "ng",
+      "j",
+      "jj",
+      "ch",
+      "k",
+      "t",
+      "p",
+      "h"
+    ],
     "files": [
       {
         "shard": "g",
         "file": "words-g.json",
-        "sha256": "76593feae5efec1c1cc1305bd3a22186fa78fa2999f1a8cc45f750555ef26dfd",
-        "bytes": 4341834,
-        "entries": 38561,
-        "candidates": 47138
+        "sha256": "a5ad53bb9e91f98de757f4d4e8ced2c441d0f664b9350ba18d076479de854446",
+        "bytes": 4341081,
+        "entries": 38554,
+        "candidates": 47129
       },
       {
         "shard": "gg",
@@ -75,18 +96,18 @@
       {
         "shard": "n",
         "file": "words-n.json",
-        "sha256": "35ac01466370f163d016682eb2e14b1bf74bd52589fcedf9f8193397ecc49f40",
-        "bytes": 943856,
-        "entries": 9090,
-        "candidates": 10604
+        "sha256": "0b2e00a86c026c2ea046586de3f8597eed7bfb133d4ded38628a5db1e0862611",
+        "bytes": 943567,
+        "entries": 9087,
+        "candidates": 10597
       },
       {
         "shard": "d",
         "file": "words-d.json",
-        "sha256": "9fcfb93ca796938510e3273f14e67e90d4adb49803b87987cf4c8fb5063299be",
-        "bytes": 1607610,
-        "entries": 14992,
-        "candidates": 18182
+        "sha256": "773cfa964f601ddc1f2dfa17945c811046f17c0ef1cd64c2da2ea70f60d8a044",
+        "bytes": 1607474,
+        "entries": 14990,
+        "candidates": 18179
       },
       {
         "shard": "dd",
@@ -107,18 +128,18 @@
       {
         "shard": "m",
         "file": "words-m.json",
-        "sha256": "4b94cf061050af247582707072244a4ee26701a0bff0f722142dd96ea82deab4",
-        "bytes": 1663650,
-        "entries": 15421,
-        "candidates": 17851
+        "sha256": "c7cb77745556eacb8ef0157114b553f4c3c986e979d24b00a88d5ee991c5a76e",
+        "bytes": 1663316,
+        "entries": 15417,
+        "candidates": 17843
       },
       {
         "shard": "b",
         "file": "words-b.json",
-        "sha256": "7b0d4b0de4d5ae70352127f635f6818e4be759d4b41fc4ba45b856b79732cd01",
-        "bytes": 2535282,
-        "entries": 23245,
-        "candidates": 27650
+        "sha256": "c565881341bf3967092a044cdc10f1e0d917520497db9c16011c6dcfa5d253f1",
+        "bytes": 2535047,
+        "entries": 23244,
+        "candidates": 27649
       },
       {
         "shard": "bb",
@@ -131,10 +152,10 @@
       {
         "shard": "s",
         "file": "words-s.json",
-        "sha256": "dbfc44135cde060b3620503431b803bf0b80f9ec77efe6e47d083505e3ddb346",
-        "bytes": 3816477,
-        "entries": 35005,
-        "candidates": 44562
+        "sha256": "c27e269f8acca8c881c3ea19ac7be56133982b415ec46352b6df79005f04c493",
+        "bytes": 3815731,
+        "entries": 34996,
+        "candidates": 44551
       },
       {
         "shard": "ss",
@@ -147,18 +168,18 @@
       {
         "shard": "ng",
         "file": "words-ng.json",
-        "sha256": "7e38b3cb6cb7123fdbcaf042d62c073c25e96d54485bf6cf05f6c73eedd8277a",
-        "bytes": 4896730,
-        "entries": 46319,
-        "candidates": 56530
+        "sha256": "0735a30969a71b9d55855b56673046f9d18f5dc7afab316d6d134fb3ccb55156",
+        "bytes": 4895493,
+        "entries": 46303,
+        "candidates": 56506
       },
       {
         "shard": "j",
         "file": "words-j.json",
-        "sha256": "d1e8168d5d243050131a10c466c630a96d3cca8649f715694b83991145f47c4f",
-        "bytes": 3860377,
-        "entries": 35667,
-        "candidates": 44885
+        "sha256": "9ed7a1992fffa0b16a181b50ba3e679546ba13de711a0521593dd30d03855fcc",
+        "bytes": 3859964,
+        "entries": 35664,
+        "candidates": 44880
       },
       {
         "shard": "jj",
@@ -171,10 +192,10 @@
       {
         "shard": "ch",
         "file": "words-ch.json",
-        "sha256": "0390fb73ad5f67f18adf86a1e41633a030dd9c884a6f6ef4b1878890c6494bac",
-        "bytes": 1836005,
-        "entries": 16738,
-        "candidates": 20153
+        "sha256": "e3e28b2195adf76498d6b8a3cc067dcc9a0b942c68ba66bba451186da94c1021",
+        "bytes": 1835952,
+        "entries": 16737,
+        "candidates": 20152
       },
       {
         "shard": "k",
@@ -187,10 +208,10 @@
       {
         "shard": "t",
         "file": "words-t.json",
-        "sha256": "7287b8d13e2a1604fd4a87270db6adf2158cc4fb757d7abc4726301ba95cb3fd",
-        "bytes": 694225,
-        "entries": 6627,
-        "candidates": 7483
+        "sha256": "cf2f4d7b0bdc6534d7da7ae7bbc0ece6546272330a5d11a911b86c4fa6d134a5",
+        "bytes": 693719,
+        "entries": 6624,
+        "candidates": 7479
       },
       {
         "shard": "p",
@@ -203,22 +224,22 @@
       {
         "shard": "h",
         "file": "words-h.json",
-        "sha256": "8239166a2ccd7b0f885d9d49ad3a0c429fa14993d6937922a9ed7b2a82baf9e7",
-        "bytes": 2235734,
-        "entries": 21083,
-        "candidates": 24990
+        "sha256": "8f205545f71cf2daec3bbf603ddc26212cb9315b0059009118e0956855dde30a",
+        "bytes": 2235172,
+        "entries": 21077,
+        "candidates": 24984
       },
       {
         "shard": "other",
         "file": "words-other.json",
-        "sha256": "d9f7f960fd7414f8ec65a08b02bb1a776e6f1a557f95da497169fcdf6e081a57",
-        "bytes": 1593,
-        "entries": 27,
-        "candidates": 27
+        "sha256": "d5f5b62a1ebb4b25f888894a47583acc4fd0ba6d94e91bb64a392c88ce4c6474",
+        "bytes": 49,
+        "entries": 0,
+        "candidates": 0
       }
     ],
-    "entries": 276786,
-    "candidates": 335561
+    "entries": 276704,
+    "candidates": 335455
   },
   "notices": "THIRD_PARTY_NOTICES.md"
 }

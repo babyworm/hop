@@ -27,12 +27,17 @@ export interface HanjaWordRecord {
 }
 
 export interface HanjaWordShard {
+  schemaVersion: number;
+  shard: string;
   entries: Record<string, HanjaWordRecord[]>;
 }
 
 export interface HanjaManifest {
   schemaVersion: number;
+  characterDatabase: { file: string };
+  readingIndex: { file: string };
   wordDatabase: {
+    initialShards: string[];
     files: Array<{ shard: string; file: string }>;
   };
 }

@@ -6,6 +6,7 @@ import {
 import { DocumentDirtyState, EventBus } from '@/upstream/core';
 import type { DocumentInfo } from '@/upstream/core';
 import { createDesktopDocument, setupDesktopEvents } from '@/core/desktop-events';
+import { advanceDocumentGeneration } from './core/document-generation';
 import { detectDesktopPlatform, hasPrimaryModifier, hydrateDesktopPlatform } from '@/core/platform';
 import { CanvasView } from '@/view/canvas-view';
 import {
@@ -532,6 +533,7 @@ async function initializeDocument(
   docInfo: DocumentInfo,
   displayName: string,
 ): Promise<void> {
+  advanceDocumentGeneration();
   const msg = sbMessage();
   try {
     if (docInfo.fontsUsed?.length) {

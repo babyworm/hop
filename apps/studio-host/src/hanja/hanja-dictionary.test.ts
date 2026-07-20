@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { HanjaDictionary, wordShardFor } from './hanja-dictionary';
+import { HanjaDictionary } from './hanja-dictionary';
 
 const manifest = {
   schemaVersion: 1,
+  characterDatabase: { file: 'characters.json' },
+  readingIndex: { file: 'readings.json' },
   wordDatabase: {
+    initialShards: [
+      'g', 'gg', 'n', 'd', 'dd', 'r', 'm', 'b', 'bb', 's',
+      'ss', 'ng', 'j', 'jj', 'ch', 'k', 't', 'p', 'h',
+    ],
     files: [
       { shard: 'h', file: 'words-h.json' },
       { shard: 's', file: 'words-s.json' },
@@ -25,13 +31,6 @@ const readings = {
 };
 
 describe('HanjaDictionary', () => {
-  it('maps modern Hangul syllables to their initial-consonant shard', () => {
-    expect(wordShardFor('학교')).toBe('h');
-    expect(wordShardFor('사기')).toBe('s');
-    expect(wordShardFor('까치')).toBe('gg');
-    expect(wordShardFor('ABC')).toBe('other');
-  });
-
   it('loads only the required word shard and caches bundled assets', async () => {
     const fetcher = vi.fn(async (input: string | URL) => {
       const path = String(input);
@@ -39,7 +38,11 @@ describe('HanjaDictionary', () => {
       if (path.endsWith('characters.json')) return response(characters);
       if (path.endsWith('readings.json')) return response(readings);
       if (path.endsWith('words-h.json')) {
-        return response({ entries: { 학교: [{ hanja: '學校', source: 7, definitions: ['교육 기관'] }] } });
+        return response({
+          schemaVersion: 1,
+          shard: 'h',
+          entries: { 학교: [{ hanja: '學校', source: 7, definitions: ['교육 기관'] }] },
+        });
       }
       throw new Error(`unexpected fetch: ${path}`);
     });
@@ -64,7 +67,9 @@ describe('HanjaDictionary', () => {
       if (path.endsWith('manifest.json')) return response(manifest);
       if (path.endsWith('characters.json')) return response(characters);
       if (path.endsWith('readings.json')) return response(readings);
-      if (path.endsWith('words-h.json')) return response({ entries: {} });
+      if (path.endsWith('words-h.json')) {
+        return response({ schemaVersion: 1, shard: 'h', entries: {} });
+      }
       throw new Error(`unexpected fetch: ${path}`);
     });
     const dictionary = new HanjaDictionary('/dictionaries/hanja/', fetcher as typeof fetch);
@@ -79,8 +84,57 @@ describe('HanjaDictionary', () => {
       ],
     });
   });
+
+  it('rejects a shard whose declared schema or identity does not match the manifest', async () => {
+    const fetcher = vi.fn(async (input: string | URL) => {
+      const path = String(input);
+      if (path.endsWith('manifest.json')) return response(manifest);
+      if (path.endsWith('characters.json')) return response(characters);
+      if (path.endsWith('readings.json')) return response(readings);
+      if (path.endsWith('words-h.json')) {
+        return response({ schemaVersion: 1, shard: 's', entries: {} });
+      }
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+
+    await expect(new HanjaDictionary('/dictionaries/hanja/', fetcher as typeof fetch).lookup('학교'))
+      .rejects.toMatchObject({ code: 'invalid-data' });
+  });
+
+  it('retains non-sensitive asset diagnostics for network and JSON failures', async () => {
+    const networkFailure = new Error('offline');
+    const networkDictionary = new HanjaDictionary('/dictionaries/hanja/', vi.fn(async () => {
+      throw networkFailure;
+    }) as typeof fetch);
+
+    await expect(networkDictionary.lookup('학교')).rejects.toMatchObject({
+      code: 'load-failed',
+      asset: 'manifest.json',
+      cause: networkFailure,
+    });
+
+    const httpDictionary = new HanjaDictionary('/dictionaries/hanja/', vi.fn(async () => ({
+      ok: false,
+      status: 503,
+    })) as unknown as typeof fetch);
+    await expect(httpDictionary.lookup('학교')).rejects.toMatchObject({
+      code: 'load-failed',
+      asset: 'manifest.json',
+      status: 503,
+    });
+
+    const invalidJsonDictionary = new HanjaDictionary('/dictionaries/hanja/', vi.fn(async () => ({
+      ok: true,
+      json: async () => { throw new SyntaxError('bad json'); },
+    })) as unknown as typeof fetch);
+    await expect(invalidJsonDictionary.lookup('학교')).rejects.toMatchObject({
+      code: 'invalid-data',
+      asset: 'manifest.json',
+      cause: expect.any(SyntaxError),
+    });
+  });
 });
 
 function response(value: unknown): Response {
-  return { ok: true, json: async () => value } as Response;
+  return { ok: true, status: 200, json: async () => value } as Response;
 }

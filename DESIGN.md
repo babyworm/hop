@@ -98,7 +98,7 @@ Dialogs use a desktop width capped by `calc(100vw - 32px)` and a candidate list 
 - Loading: status bar reports that the bundled dictionary is loading; no empty dialog flashes.
 - Word match: complete word candidates are preferred over character fallback.
 - No word match: every Hangul syllable must have at least one labeled character candidate before the fallback dialog opens.
-- Unsupported input: empty text, non-Hangul text, cross-paragraph selections, unsupported note/header editing contexts, or missing candidates produce a concise status message and make no edit.
+- Unsupported input: empty text, non-Hangul text, cross-paragraph selections, form mode, unsupported note/header editing contexts, or missing candidates produce a concise status message and make no edit.
 - Stale range: if the editor range changes while data or the modal is open, conversion is cancelled safely.
 - Failure: bundled asset parse/load failures are logged without document content and summarized in the status bar.
 - Success: the replacement is one undoable edit and the status bar confirms the source and result.
@@ -109,6 +109,7 @@ Dialogs use a desktop width capped by `calc(100vw - 32px)` and a candidate list 
 - The bundled static dictionary is the runtime source. No API key or network service is required.
 - New behavior must use the existing command registry and shortcut matcher.
 - Text mutation goes through upstream's undo-aware operation router.
+- Replacement lengths use document character counts rather than JavaScript UTF-16 code units so supplementary-plane Hanja remain undo-safe.
 - DOM text uses `textContent`; dictionary content is never injected as HTML.
 - No new dependency is required for this interaction.
 
