@@ -18,6 +18,7 @@ vi.mock('@/upstream/commands', () => ({
 vi.mock('@/command/commands/edit', () => ({ editCommands: [] }));
 vi.mock('@/command/commands/file', () => ({ fileCommands: [] }));
 vi.mock('@/command/commands/format', () => ({ formatCommands: [] }));
+vi.mock('../command/commands/hanja', () => ({ hanjaCommands: [] }));
 
 import { createCommandRuntime } from './command-runtime';
 
@@ -45,7 +46,7 @@ describe('createCommandRuntime', () => {
       editMode: 'normal',
       isEditable: true,
     });
-    expect(registeredGroups).toHaveLength(8);
+    expect(registeredGroups).toHaveLength(9);
   });
 
   it('synchronizes form mode with the input handler, DOM, status, and events', () => {

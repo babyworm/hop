@@ -7,6 +7,7 @@ import { hasPrimaryModifier } from '../core/platform';
 export type { ShortcutDef };
 
 const hopShortcuts: [ShortcutDef, string][] = [
+  [{ key: 'f9' }, 'edit:convert-hanja'],
   [{ key: 'n', ctrl: true, shift: true }, 'file:new-window'],
   [{ key: 'o', ctrl: true, alt: true }, 'file:open-recent'],
   [{ key: 's', ctrl: true, shift: true }, 'file:save-as'],

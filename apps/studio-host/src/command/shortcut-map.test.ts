@@ -30,6 +30,13 @@ describe('shortcut-map', () => {
     expect(matchShortcut(keyEvent({ key: 's', metaKey: true }), defaultShortcuts)).toBeNull();
     expect(matchShortcut(keyEvent({ key: 's', ctrlKey: true }), defaultShortcuts)).toBe('file:save');
   });
+
+  it('maps unmodified F9 to Hangul-Hanja conversion on every platform', () => {
+    installNavigator({ platform: 'MacIntel', userAgent: 'Mac OS X' });
+
+    expect(matchShortcut(keyEvent({ key: 'F9' }), defaultShortcuts)).toBe('edit:convert-hanja');
+    expect(matchShortcut(keyEvent({ key: 'F9', metaKey: true }), defaultShortcuts)).toBeNull();
+  });
 });
 
 function installNavigator(value: Pick<Navigator, 'platform' | 'userAgent'>): void {

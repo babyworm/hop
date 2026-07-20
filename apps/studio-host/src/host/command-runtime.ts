@@ -14,6 +14,7 @@ import type { DocumentDirtyState, EventBus, WasmBridge } from '@/upstream/core';
 import { editCommands } from '@/command/commands/edit';
 import { fileCommands } from '@/command/commands/file';
 import { formatCommands } from '@/command/commands/format';
+import { hanjaCommands } from '../command/commands/hanja';
 import { assertUniqueCommandIds } from '../command/replace-upstream-commands';
 
 interface CommandRuntimeDependencies {
@@ -39,6 +40,7 @@ export interface CommandRuntime {
 const commandContributions: readonly CommandDef[][] = [
   fileCommands,
   editCommands,
+  hanjaCommands,
   viewCommands,
   formatCommands,
   insertCommands,

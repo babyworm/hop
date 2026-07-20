@@ -1,0 +1,200 @@
+.hanja-conversion-dialog {
+  width: 620px;
+  max-width: calc(100vw - 32px);
+}
+
+.hanja-conversion-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-8);
+}
+
+.hanja-conversion-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.hanja-conversion-mode {
+  padding: var(--space-1) var(--space-4);
+  border: 1px solid var(--color-primary-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-bg);
+  color: var(--color-primary-dark);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.hanja-conversion-original {
+  overflow: hidden;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hanja-conversion-description {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.hanja-conversion-preview {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid var(--color-border-lighter);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.hanja-conversion-preview-label {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.hanja-conversion-preview-value {
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+}
+
+.hanja-syllable-tabs {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-block: var(--space-1);
+}
+
+.hanja-syllable-tab {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 52px;
+  height: 32px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.hanja-syllable-tab[data-active="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-accent-bg);
+  box-shadow: 0 0 0 2px var(--ui-focus-soft);
+}
+
+.hanja-syllable-source {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.hanja-syllable-choice {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.hanja-candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: min(380px, calc(100vh - 290px));
+  overflow-y: auto;
+  padding: var(--space-1);
+  outline: none;
+}
+
+.hanja-candidate-list:focus-visible {
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 2px var(--ui-focus-soft);
+}
+
+.hanja-candidate-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 48px;
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: default;
+}
+
+.hanja-candidate-item:hover {
+  background: var(--color-hover-bg);
+}
+
+.hanja-candidate-item[aria-selected="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-accent-bg-light);
+}
+
+.hanja-candidate-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+
+.hanja-word-value {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hanja-word-metadata,
+.hanja-candidate-definition,
+.hanja-character-flags {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.hanja-candidate-labels {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+}
+
+.hanja-character-value {
+  min-width: 40px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hanja-character-details {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+}
+
+.hanja-character-label {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+@media (max-width: 767px) {
+  .hanja-conversion-dialog {
+    max-width: calc(100vw - 16px);
+  }
+
+  .hanja-syllable-tab,
+  .hanja-candidate-item {
+    min-height: var(--touch-target-min);
+  }
+
+  .hanja-candidate-top,
+  .hanja-character-details {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+}

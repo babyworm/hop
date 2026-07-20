@@ -25,4 +25,5 @@
 @import '@/styles/home-screen.css';
 @import '@/styles/update-notice.css';
 @import '@/styles/recent-documents-dialog.css';
+@import './styles/hanja-conversion-dialog.css';
 @import '@/styles/responsive.css';

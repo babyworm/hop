@@ -11,6 +11,7 @@ import {
 import { editCommands } from './commands/edit';
 import { fileCommands } from './commands/file';
 import { formatCommands } from './commands/format';
+import { hanjaCommands } from './commands/hanja';
 import { assertUniqueCommandIds, replaceUpstreamCommands } from './replace-upstream-commands';
 import { defaultShortcuts } from './shortcut-map';
 
@@ -18,6 +19,7 @@ const command = (id: string): CommandDef => ({ id, label: id, execute: vi.fn() }
 const productionCommandGroups = [
   fileCommands,
   editCommands,
+  hanjaCommands,
   viewCommands,
   formatCommands,
   insertCommands,
