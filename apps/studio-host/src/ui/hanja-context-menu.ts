@@ -8,6 +8,7 @@ import type { ContextMenuItem } from '@/upstream/ui';
 import {
   isHanjaConversionContextEditable,
 } from '../command/commands/hanja';
+import { hanjaConversionShortcutLabel } from '../command/shortcut-map';
 import {
   readConversionSource,
   type HanjaConversionDirection,
@@ -105,7 +106,7 @@ export class HanjaContextMenu extends ContextMenu {
 
     const shortcut = document.createElement('span');
     shortcut.className = 'md-shortcut';
-    shortcut.textContent = 'F9';
+    shortcut.textContent = hanjaConversionShortcutLabel(direction);
     item.appendChild(shortcut);
 
     item.addEventListener('click', (event) => {

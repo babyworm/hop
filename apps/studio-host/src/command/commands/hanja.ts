@@ -5,12 +5,17 @@ import {
   HanjaLookupError,
 } from '../../hanja/hanja-dictionary';
 import {
+  type HanjaConversionDirection,
   HanjaEditorRangeError,
   isConversionSourceCurrent,
   readConversionSource,
   replaceConversionSource,
 } from '../../hanja/editor-text-range';
 import { openHanjaConversionDialog } from '../../ui/hanja-conversion-dialog';
+import {
+  hanjaCommandShortcutLabel,
+  hanjaConversionShortcutLabel,
+} from '../shortcut-map';
 
 let dictionary: HanjaDictionary | null = null;
 let conversionPending = false;
@@ -18,20 +23,28 @@ let conversionPending = false;
 export const hanjaCommands: CommandDef[] = [{
   id: 'edit:convert-hanja',
   label: '한글/한자 변환',
-  shortcutLabel: 'F9',
+  shortcutLabel: hanjaCommandShortcutLabel(),
   canExecute: isHanjaConversionContextEditable,
-  execute: (services) => {
+  execute: (services, params) => {
     if (conversionPending) return;
     conversionPending = true;
-    void convertHanja(services).finally(() => {
+    void convertHanja(services, conversionDirectionParam(params)).finally(() => {
       conversionPending = false;
     });
   },
 }];
 
-async function convertHanja(services: CommandServices): Promise<void> {
+async function convertHanja(
+  services: CommandServices,
+  expectedDirection: HanjaConversionDirection | null,
+): Promise<void> {
   try {
     const source = readConversionSource(services);
+    if (expectedDirection && source.direction !== expectedDirection) {
+      const shortcut = hanjaConversionShortcutLabel(source.direction);
+      setStatusMessage(`${contextName(source.direction)} 변환 단축키는 ${shortcut}입니다.`);
+      return;
+    }
     setStatusMessage('내장 한자 사전에서 후보를 찾는 중입니다…');
     dictionary ??= createBundledHanjaDictionary();
     const lookup = source.direction === 'hanja-to-hangul'
@@ -79,6 +92,19 @@ async function convertHanja(services: CommandServices): Promise<void> {
     console.warn('[hanja-conversion] 변환 작업을 완료하지 못했습니다.', errorSummary(error));
     setStatusMessage('한자 변환 중 오류가 발생했습니다.');
   }
+}
+
+function conversionDirectionParam(
+  params: Record<string, unknown> | undefined,
+): HanjaConversionDirection | null {
+  const direction = params?.direction;
+  return direction === 'hangul-to-hanja' || direction === 'hanja-to-hangul'
+    ? direction
+    : null;
+}
+
+function contextName(direction: HanjaConversionDirection): string {
+  return direction === 'hanja-to-hangul' ? '한자에서 한글로' : '한글에서 한자로';
 }
 
 export function isHanjaConversionContextEditable(context: EditorContext): boolean {

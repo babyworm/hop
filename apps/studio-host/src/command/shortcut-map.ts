@@ -2,7 +2,13 @@ import {
   defaultShortcuts as upstreamDefaultShortcuts,
 } from '@/upstream/shortcuts';
 import type { ShortcutDef } from '@/upstream/shortcuts';
-import { hasPrimaryModifier } from '../core/platform';
+import {
+  detectDesktopPlatform,
+  hasPrimaryModifier,
+  normalizeShortcutLabel,
+  type DesktopPlatform,
+} from '../core/platform';
+import type { HanjaConversionDirection } from '../hanja/editor-text-range';
 
 export type { ShortcutDef };
 
@@ -38,12 +44,14 @@ export type HanjaShortcutCaptureState = {
 
 export function handleHanjaShortcutCapture(
   event: HanjaShortcutEvent,
-  dispatcher: { dispatch(commandId: string): boolean },
+  dispatcher: {
+    dispatch(commandId: string, params?: Record<string, unknown>): boolean;
+  },
   state: HanjaShortcutCaptureState,
 ): boolean {
+  const direction = matchHanjaConversionShortcut(event);
   if (
-    !isF9(event) ||
-    event.ctrlKey || event.metaKey || event.shiftKey || event.altKey ||
+    direction === null ||
     state.editorInput === null ||
     (event.target !== state.editorInput && !state.editorInputHasFocus) ||
     !state.isEditorActive || state.hasActiveModal ||
@@ -55,14 +63,48 @@ export function handleHanjaShortcutCapture(
 
   event.preventDefault();
   event.stopPropagation();
-  dispatcher.dispatch('edit:convert-hanja');
+  dispatcher.dispatch('edit:convert-hanja', { direction });
   return true;
 }
 
-function isF9(event: Pick<HanjaShortcutEvent, 'key' | 'code' | 'keyCode'>): boolean {
-  return event.key.toLowerCase() === 'f9' ||
-    event.code.toLowerCase() === 'f9' ||
-    event.keyCode === 120;
+export function matchHanjaConversionShortcut(
+  event: Pick<
+    HanjaShortcutEvent,
+    'key' | 'code' | 'keyCode' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'
+  >,
+  platform: DesktopPlatform = detectDesktopPlatform(),
+): HanjaConversionDirection | null {
+  if (event.ctrlKey || event.metaKey || event.shiftKey) return null;
+  if (!event.altKey && isFunctionKey(event, 9)) return 'hangul-to-hanja';
+  if (!event.altKey) return null;
+
+  const reverseKey = platform === 'windows' ? 8 : 9;
+  return isFunctionKey(event, reverseKey) ? 'hanja-to-hangul' : null;
+}
+
+export function hanjaConversionShortcutLabel(
+  direction: HanjaConversionDirection,
+  platform: DesktopPlatform = detectDesktopPlatform(),
+): string {
+  if (direction === 'hangul-to-hanja') return 'F9';
+  const label = platform === 'windows' ? 'Alt+F8' : 'Alt+F9';
+  return normalizeShortcutLabel(label, platform);
+}
+
+export function hanjaCommandShortcutLabel(
+  platform: DesktopPlatform = detectDesktopPlatform(),
+): string {
+  return `F9 / ${hanjaConversionShortcutLabel('hanja-to-hangul', platform)}`;
+}
+
+function isFunctionKey(
+  event: Pick<HanjaShortcutEvent, 'key' | 'code' | 'keyCode'>,
+  number: 8 | 9,
+): boolean {
+  const key = `f${number}`;
+  return event.key.toLowerCase() === key ||
+    event.code.toLowerCase() === key ||
+    event.keyCode === 111 + number;
 }
 
 const hopShortcutKeys = new Set(hopShortcuts.map(([shortcut]) => shortcutKey(shortcut)));

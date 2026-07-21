@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   defaultShortcuts,
+  hanjaCommandShortcutLabel,
+  hanjaConversionShortcutLabel,
   handleHanjaShortcutCapture,
+  matchHanjaConversionShortcut,
   matchShortcut,
 } from './shortcut-map';
 import { resetDesktopPlatformOverride } from '../core/platform';
@@ -50,7 +53,9 @@ describe('shortcut-map', () => {
     expect(handleHanjaShortcutCapture(event, dispatcher, captureState())).toBe(true);
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(event.stopPropagation).toHaveBeenCalledOnce();
-    expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja');
+    expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja', {
+      direction: 'hangul-to-hanja',
+    });
   });
 
   it.each([
@@ -61,7 +66,9 @@ describe('shortcut-map', () => {
     const event = captureKeyEvent(eventState);
 
     expect(handleHanjaShortcutCapture(event, dispatcher, captureState())).toBe(true);
-    expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja');
+    expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja', {
+      direction: 'hangul-to-hanja',
+    });
   });
 
   it('accepts a retargeted WebView event while the editor input remains focused', () => {
@@ -73,10 +80,49 @@ describe('shortcut-map', () => {
       dispatcher,
       captureState({ editorInputHasFocus: true }),
     )).toBe(true);
-    expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja');
+    expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja', {
+      direction: 'hangul-to-hanja',
+    });
   });
 
-  it('ignores modified F9 in the capture path', () => {
+  it('uses Option+F9 for reverse conversion on macOS', () => {
+    installNavigator({ platform: 'MacIntel', userAgent: 'Mac OS X' });
+    const dispatcher = { dispatch: vi.fn(() => true) };
+    const event = captureKeyEvent({ key: 'F9', altKey: true });
+
+    expect(handleHanjaShortcutCapture(event, dispatcher, captureState())).toBe(true);
+    expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja', {
+      direction: 'hanja-to-hangul',
+    });
+    expect(hanjaConversionShortcutLabel('hanja-to-hangul')).toBe('⌥F9');
+    expect(hanjaCommandShortcutLabel()).toBe('F9 / ⌥F9');
+  });
+
+  it('uses Alt+F8 for reverse conversion on Windows', () => {
+    installNavigator({ platform: 'Win32', userAgent: 'Windows NT 10.0' });
+    const dispatcher = { dispatch: vi.fn(() => true) };
+    const event = captureKeyEvent({ key: 'F8', altKey: true });
+
+    expect(handleHanjaShortcutCapture(event, dispatcher, captureState())).toBe(true);
+    expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja', {
+      direction: 'hanja-to-hangul',
+    });
+    expect(hanjaConversionShortcutLabel('hanja-to-hangul')).toBe('Alt+F8');
+    expect(hanjaCommandShortcutLabel()).toBe('F9 / Alt+F8');
+  });
+
+  it('keeps the reverse chord platform-specific', () => {
+    expect(matchHanjaConversionShortcut(
+      captureKeyEvent({ key: 'F8', altKey: true }),
+      'macos',
+    )).toBeNull();
+    expect(matchHanjaConversionShortcut(
+      captureKeyEvent({ key: 'F9', altKey: true }),
+      'windows',
+    )).toBeNull();
+  });
+
+  it('ignores unsupported modified F9 in the capture path', () => {
     expectHanjaCaptureIgnored(
       captureKeyEvent({ key: 'F9', shiftKey: true }),
       captureState(),

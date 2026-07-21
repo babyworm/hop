@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import studioHtml from '../../index.html?raw';
-import { shouldOfferHanjaContextMenu } from './hanja-context-menu';
-import { contextMenuConversionLabel } from './hanja-context-menu';
+import {
+  contextMenuConversionLabel,
+  shouldOfferHanjaContextMenu,
+} from './hanja-context-menu';
+import { hanjaConversionShortcutLabel } from '../command/shortcut-map';
 
 describe('Hanja conversion entry points', () => {
   it('places the Input menu command directly below Character Table', () => {
@@ -45,6 +48,8 @@ describe('Hanja conversion entry points', () => {
 
     expect(shouldOfferHanjaContextMenu(editableServices() as never, readSource as never)).toBe(true);
     expect(contextMenuConversionLabel('hanja-to-hangul')).toBe('한글로 변환');
+    expect(hanjaConversionShortcutLabel('hanja-to-hangul', 'macos')).toBe('⌥F9');
+    expect(hanjaConversionShortcutLabel('hanja-to-hangul', 'windows')).toBe('Alt+F8');
   });
 
   it('hides the context submenu for an English selection', () => {

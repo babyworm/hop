@@ -69,12 +69,29 @@ describe('Hanja command', () => {
     hanjaCommands[0]!.execute({
       getContext: () => editableContext(),
       getInputHandler: () => ({}),
-    } as never);
+    } as never, { direction: 'hanja-to-hangul' });
 
     await vi.waitFor(() => {
       expect(commandMocks.replaceSource).toHaveBeenCalledWith({}, source, '학교');
     });
     expect(commandMocks.lookupHanja).toHaveBeenCalledWith('學校');
+    expect(commandMocks.lookup).not.toHaveBeenCalled();
+  });
+
+  it('does not run reverse lookup when the forward F9 command is used on Hanja', async () => {
+    const status = { textContent: '' };
+    vi.stubGlobal('document', { getElementById: () => status });
+    commandMocks.readSource.mockReturnValue({ text: '學校', direction: 'hanja-to-hangul' });
+
+    hanjaCommands[0]!.execute({
+      getContext: () => editableContext(),
+      getInputHandler: () => ({}),
+    } as never, { direction: 'hangul-to-hanja' });
+
+    await vi.waitFor(() => {
+      expect(status.textContent).toContain('변환 단축키');
+    });
+    expect(commandMocks.lookupHanja).not.toHaveBeenCalled();
     expect(commandMocks.lookup).not.toHaveBeenCalled();
   });
 
