@@ -17,6 +17,7 @@ export type InputHandlerShortcutCaptureState = {
   readonly isEditorActive: boolean;
   readonly isInternallyComposing: boolean;
   readonly hasActivePlacementMode: boolean;
+  readonly editorInputHasFocus: boolean;
 };
 
 interface CursorAccess {
@@ -48,6 +49,7 @@ export function getInputHandlerShortcutCaptureState(
       isEditorActive: false,
       isInternallyComposing: false,
       hasActivePlacementMode: false,
+      editorInputHasFocus: false,
     };
   }
 
@@ -63,6 +65,8 @@ export function getInputHandlerShortcutCaptureState(
       privateStateMayBeActive(inputHandler, 'textboxPlacementMode') ||
       privateStateMayBeActive(inputHandler, 'connectorDrawingMode') ||
       privateStateMayBeActive(inputHandler, 'polygonDrawingMode'),
+    editorInputHasFocus:
+      typeof document !== 'undefined' && document.activeElement === editorInput,
   };
 }
 

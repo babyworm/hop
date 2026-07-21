@@ -15,6 +15,7 @@ const hopShortcuts: [ShortcutDef, string][] = [
 type HanjaShortcutEvent = Pick<
   KeyboardEvent,
   | 'key'
+  | 'code'
   | 'ctrlKey'
   | 'metaKey'
   | 'shiftKey'
@@ -32,6 +33,7 @@ export type HanjaShortcutCaptureState = {
   readonly hasActiveModal: boolean;
   readonly isInternallyComposing: boolean;
   readonly hasActivePlacementMode: boolean;
+  readonly editorInputHasFocus: boolean;
 };
 
 export function handleHanjaShortcutCapture(
@@ -40,9 +42,10 @@ export function handleHanjaShortcutCapture(
   state: HanjaShortcutCaptureState,
 ): boolean {
   if (
-    event.key.toLowerCase() !== 'f9' ||
+    !isF9(event) ||
     event.ctrlKey || event.metaKey || event.shiftKey || event.altKey ||
-    state.editorInput === null || event.target !== state.editorInput ||
+    state.editorInput === null ||
+    (event.target !== state.editorInput && !state.editorInputHasFocus) ||
     !state.isEditorActive || state.hasActiveModal ||
     event.isComposing || event.keyCode === 229 || state.isInternallyComposing ||
     state.hasActivePlacementMode
@@ -54,6 +57,12 @@ export function handleHanjaShortcutCapture(
   event.stopPropagation();
   dispatcher.dispatch('edit:convert-hanja');
   return true;
+}
+
+function isF9(event: Pick<HanjaShortcutEvent, 'key' | 'code' | 'keyCode'>): boolean {
+  return event.key.toLowerCase() === 'f9' ||
+    event.code.toLowerCase() === 'f9' ||
+    event.keyCode === 120;
 }
 
 const hopShortcutKeys = new Set(hopShortcuts.map(([shortcut]) => shortcutKey(shortcut)));

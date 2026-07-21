@@ -17,7 +17,7 @@ let conversionPending = false;
 
 export const hanjaCommands: CommandDef[] = [{
   id: 'edit:convert-hanja',
-  label: '한글을 한자로',
+  label: '한글/한자 변환',
   shortcutLabel: 'F9',
   canExecute: isHanjaConversionContextEditable,
   execute: (services) => {

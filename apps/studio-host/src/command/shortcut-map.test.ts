@@ -53,6 +53,29 @@ describe('shortcut-map', () => {
     expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja');
   });
 
+  it.each([
+    ['physical key code', { key: '', code: 'F9' }],
+    ['legacy key code', { key: '', code: '', keyCode: 120 }],
+  ])('recognizes F9 reported through %s', (_label, eventState) => {
+    const dispatcher = { dispatch: vi.fn(() => true) };
+    const event = captureKeyEvent(eventState);
+
+    expect(handleHanjaShortcutCapture(event, dispatcher, captureState())).toBe(true);
+    expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja');
+  });
+
+  it('accepts a retargeted WebView event while the editor input remains focused', () => {
+    const dispatcher = { dispatch: vi.fn(() => true) };
+    const event = captureKeyEvent({ key: 'F9', target: new EventTarget() });
+
+    expect(handleHanjaShortcutCapture(
+      event,
+      dispatcher,
+      captureState({ editorInputHasFocus: true }),
+    )).toBe(true);
+    expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja');
+  });
+
   it('ignores modified F9 in the capture path', () => {
     expectHanjaCaptureIgnored(
       captureKeyEvent({ key: 'F9', shiftKey: true }),
@@ -87,7 +110,7 @@ describe('shortcut-map', () => {
   it('ignores F9 from a target other than the current editor input', () => {
     expectHanjaCaptureIgnored(
       captureKeyEvent({ key: 'F9', target: new EventTarget() }),
-      captureState(),
+      captureState({ editorInputHasFocus: false }),
     );
   });
 
@@ -156,6 +179,7 @@ function captureKeyEvent(
   overrides: Partial<Pick<
     KeyboardEvent,
     | 'key'
+    | 'code'
     | 'ctrlKey'
     | 'metaKey'
     | 'shiftKey'
@@ -170,6 +194,7 @@ function captureKeyEvent(
     target: editorInputTarget,
     isComposing: false,
     keyCode: 0,
+    code: '',
     preventDefault: vi.fn(),
     stopPropagation: vi.fn(),
     ...overrides,
@@ -184,6 +209,7 @@ function captureState(overrides: Partial<{
   hasActiveModal: boolean;
   isInternallyComposing: boolean;
   hasActivePlacementMode: boolean;
+  editorInputHasFocus: boolean;
 }> = {}) {
   return {
     editorInput: editorInputTarget,
@@ -191,6 +217,7 @@ function captureState(overrides: Partial<{
     hasActiveModal: false,
     isInternallyComposing: false,
     hasActivePlacementMode: false,
+    editorInputHasFocus: false,
     ...overrides,
   };
 }

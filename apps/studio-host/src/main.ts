@@ -16,7 +16,7 @@ import {
   TableResizeRenderer,
 } from '@/upstream/editor';
 import { Toolbar } from '@/ui/toolbar';
-import { CommandPalette, ContextMenu, MenuBar } from '@/upstream/ui';
+import { CommandPalette, MenuBar } from '@/upstream/ui';
 import { loadWebFonts } from '@/core/font-loader';
 import { loadStoredLocalFonts } from '@/core/local-fonts';
 import { isSupportedDocumentPath } from '@/core/document-files';
@@ -29,6 +29,7 @@ import { HomeScreen } from '@/ui/home-screen';
 import type { DesktopBridgeApi } from '@/core/tauri-bridge';
 import { handleHanjaShortcutCapture } from '@/command/shortcut-map';
 import { createCommandRuntime } from './host/command-runtime';
+import { HanjaContextMenu } from './ui/hanja-context-menu';
 
 const wasm = createBridge();
 const eventBus = new EventBus();
@@ -129,7 +130,7 @@ async function initialize(): Promise<void> {
 
     // InputHandler에 커맨드 디스패처 및 컨텍스트 메뉴 주입
     inputHandler.setDispatcher(dispatcher);
-    inputHandler.setContextMenu(new ContextMenu(dispatcher, registry));
+    inputHandler.setContextMenu(new HanjaContextMenu(dispatcher, registry, commandServices));
     inputHandler.setCommandPalette(new CommandPalette(registry, dispatcher));
     inputHandler.setCellSelectionRenderer(
       new CellSelectionRenderer(container, canvasView.getVirtualScroll()),

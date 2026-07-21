@@ -1,0 +1,33 @@
+.icon-hanja {
+  background-image: none !important;
+  position: relative;
+}
+
+.icon-hanja::before {
+  content: '漢';
+  position: absolute;
+  inset: 0;
+  color: var(--accent-light);
+  font-family: serif;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.md-icon.icon-hanja::before {
+  font-size: 15px;
+  line-height: 16px;
+}
+
+.tb-sprite.icon-hanja::before {
+  font-size: 17px;
+}
+
+.context-menu .hanja-context-submenu > .md-sub-panel {
+  z-index: 20001;
+}
+
+.context-menu .hanja-context-submenu.open-left > .md-sub-panel {
+  right: 100%;
+  left: auto;
+}
