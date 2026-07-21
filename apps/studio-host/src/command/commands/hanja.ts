@@ -1,4 +1,4 @@
-import type { CommandDef, CommandServices } from '@/upstream/commands';
+import type { CommandDef, CommandServices, EditorContext } from '@/upstream/commands';
 import type { HanjaDictionary } from '../../hanja/hanja-dictionary';
 import {
   createBundledHanjaDictionary,
@@ -19,15 +19,8 @@ export const hanjaCommands: CommandDef[] = [{
   id: 'edit:convert-hanja',
   label: '한글을 한자로',
   shortcutLabel: 'F9',
-  canExecute: (context) => context.hasDocument && context.isEditable &&
-    !context.isFormMode &&
-    !context.inPictureObjectSelection && !context.inTableObjectSelection &&
-    !context.inCellSelectionMode && !context.hasMultiCellSelection,
+  canExecute: isHanjaConversionContextEditable,
   execute: (services) => {
-    if (services.getContext().isFormMode) {
-      setStatusMessage('양식 모드에서는 아직 한자 변환을 지원하지 않습니다.');
-      return;
-    }
     if (conversionPending) return;
     conversionPending = true;
     void convertHanja(services).finally(() => {
@@ -42,7 +35,10 @@ async function convertHanja(services: CommandServices): Promise<void> {
     setStatusMessage('내장 한자 사전에서 후보를 찾는 중입니다…');
     dictionary ??= createBundledHanjaDictionary();
     const lookup = await dictionary.lookup(source.text);
-    if (!isConversionSourceCurrent(services, source)) {
+    if (
+      !isHanjaConversionContextEditable(services.getContext()) ||
+      !isConversionSourceCurrent(services, source)
+    ) {
       setStatusMessage('편집 위치가 바뀌어 한자 변환을 취소했습니다.');
       return;
     }
@@ -52,7 +48,10 @@ async function convertHanja(services: CommandServices): Promise<void> {
       setStatusMessage('한자 변환을 취소했습니다.');
       return;
     }
-    if (!isConversionSourceCurrent(services, source)) {
+    if (
+      !isHanjaConversionContextEditable(services.getContext()) ||
+      !isConversionSourceCurrent(services, source)
+    ) {
       setStatusMessage('편집 위치가 바뀌어 한자 변환을 취소했습니다.');
       return;
     }
@@ -78,6 +77,13 @@ async function convertHanja(services: CommandServices): Promise<void> {
     console.warn('[hanja-conversion] 변환 작업을 완료하지 못했습니다.', errorSummary(error));
     setStatusMessage('한자 변환 중 오류가 발생했습니다.');
   }
+}
+
+export function isHanjaConversionContextEditable(context: EditorContext): boolean {
+  return context.hasDocument && context.isEditable &&
+    !context.isFormMode &&
+    !context.inPictureObjectSelection && !context.inTableObjectSelection &&
+    !context.inCellSelectionMode && !context.hasMultiCellSelection;
 }
 
 export function logHanjaLookupFailure(error: HanjaLookupError): void {

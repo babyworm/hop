@@ -1,30 +1,105 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const commandMocks = vi.hoisted(() => ({
+  lookup: vi.fn(),
+  openDialog: vi.fn(),
+  readSource: vi.fn(),
+  replaceSource: vi.fn(),
+  sourceCurrent: vi.fn(),
+}));
+
+vi.mock('../../hanja/hanja-dictionary', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../hanja/hanja-dictionary')>();
+  return {
+    ...actual,
+    createBundledHanjaDictionary: () => ({ lookup: commandMocks.lookup }),
+  };
+});
+vi.mock('../../hanja/editor-text-range', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../hanja/editor-text-range')>();
+  return {
+    ...actual,
+    isConversionSourceCurrent: commandMocks.sourceCurrent,
+    readConversionSource: commandMocks.readSource,
+    replaceConversionSource: commandMocks.replaceSource,
+  };
+});
+vi.mock('../../ui/hanja-conversion-dialog', () => ({
+  openHanjaConversionDialog: commandMocks.openDialog,
+}));
+
 import { HanjaLookupError } from '../../hanja/hanja-dictionary';
-import { hanjaCommands, logHanjaLookupFailure } from './hanja';
+import {
+  hanjaCommands,
+  isHanjaConversionContextEditable,
+  logHanjaLookupFailure,
+} from './hanja';
 
 describe('Hanja command', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
 
-  it('is disabled in form mode and reports an explicit reason on direct dispatch', () => {
-    const status = { textContent: '' };
-    vi.stubGlobal('document', { getElementById: () => status });
-    const command = hanjaCommands[0]!;
-    const context = {
-      hasDocument: true,
-      isEditable: true,
-      isFormMode: true,
-      inPictureObjectSelection: false,
-      inTableObjectSelection: false,
-      inCellSelectionMode: false,
-      hasMultiCellSelection: false,
-    };
+  it.each([
+    ['read-only document', { isEditable: false }],
+    ['form mode', { isFormMode: true }],
+    ['picture selection', { inPictureObjectSelection: true }],
+    ['table selection', { inTableObjectSelection: true }],
+    ['cell selection', { inCellSelectionMode: true }],
+    ['multi-cell selection', { hasMultiCellSelection: true }],
+  ])('disables conversion in %s', (_name, override) => {
+    expect(isHanjaConversionContextEditable({ ...editableContext(), ...override } as never)).toBe(false);
+  });
 
-    expect(command.canExecute?.(context as never)).toBe(false);
-    command.execute({ getContext: () => context } as never);
-    expect(status.textContent).toBe('양식 모드에서는 아직 한자 변환을 지원하지 않습니다.');
+  it('rechecks editable context after the dialog resolves', async () => {
+    const status = { textContent: '' };
+    let context = editableContext();
+    vi.stubGlobal('document', { getElementById: () => status });
+    commandMocks.readSource.mockReturnValue({ text: '학' });
+    commandMocks.lookup.mockResolvedValue({ kind: 'word', source: '학', candidates: [] });
+    commandMocks.sourceCurrent.mockReturnValue(true);
+    commandMocks.openDialog.mockImplementation(async () => {
+      context = { ...context, inCellSelectionMode: true };
+      return '學';
+    });
+
+    hanjaCommands[0]!.execute({
+      getContext: () => context,
+      getInputHandler: () => ({}),
+    } as never);
+
+    await vi.waitFor(() => {
+      expect(status.textContent).toBe('편집 위치가 바뀌어 한자 변환을 취소했습니다.');
+    });
+    expect(commandMocks.replaceSource).not.toHaveBeenCalled();
+  });
+
+  it('does not open the dialog when context changes while dictionary lookup is pending', async () => {
+    const status = { textContent: '' };
+    let context = editableContext();
+    let resolveLookup = (_value: unknown): void => {};
+    const lookupPending = new Promise<unknown>((resolve) => {
+      resolveLookup = (value) => resolve(value);
+    });
+    vi.stubGlobal('document', { getElementById: () => status });
+    commandMocks.readSource.mockReturnValue({ text: '학' });
+    commandMocks.lookup.mockReturnValue(lookupPending);
+    commandMocks.sourceCurrent.mockReturnValue(true);
+
+    hanjaCommands[0]!.execute({
+      getContext: () => context,
+      getInputHandler: () => ({}),
+    } as never);
+    context = { ...context, isFormMode: true };
+    resolveLookup({ kind: 'word', source: '학', candidates: [] });
+
+    await vi.waitFor(() => {
+      expect(status.textContent).toBe('편집 위치가 바뀌어 한자 변환을 취소했습니다.');
+    });
+    expect(commandMocks.openDialog).not.toHaveBeenCalled();
+    expect(commandMocks.replaceSource).not.toHaveBeenCalled();
   });
 
   it('logs only bounded dictionary diagnostics without source document text', () => {
@@ -45,3 +120,15 @@ describe('Hanja command', () => {
     });
   });
 });
+
+function editableContext() {
+  return {
+    hasDocument: true,
+    isEditable: true,
+    isFormMode: false,
+    inPictureObjectSelection: false,
+    inTableObjectSelection: false,
+    inCellSelectionMode: false,
+    hasMultiCellSelection: false,
+  };
+}

@@ -1,19 +1,18 @@
 import type { CommandServices } from '@/upstream/commands';
 import type { DocumentPosition, WasmBridge } from '@/upstream/core';
 import { currentDocumentGeneration } from '../core/document-generation';
-import type { EditCommand, TextMutationEffects } from '../upstream/editor';
-import {
-  DeleteTextCommand,
-  getInputHandlerCursorAccess,
-  IMMEDIATE_TEXT_MUTATION_EFFECTS,
-  InsertTextCommand,
-  NO_TEXT_MUTATION_EFFECTS,
-} from '../upstream/editor';
+import type { EditCommand } from '../upstream/editor';
+import { getInputHandlerCursorAccess } from '../upstream/editor';
+import { HanjaReplaceCommand } from './hanja-replace-command';
 
 interface ConversionInputHandler {
   getSelection(): { start: DocumentPosition; end: DocumentPosition } | null;
   getCursorPosition(): DocumentPosition;
-  executeOperation(descriptor: { kind: 'command'; command: EditCommand }): void;
+  executeOperation(descriptor: {
+    kind: 'command';
+    command: EditCommand;
+    meta?: { refresh: 'full' };
+  }): void;
 }
 
 export interface HanjaConversionSource {
@@ -72,6 +71,7 @@ export function readConversionSource(
   const selection = inputHandler.getSelection();
   if (selection) {
     assertSameTextContainer(selection.start, selection.end);
+    assertSupportedContainer(selection.start);
     const count = selection.end.charOffset - selection.start.charOffset;
     if (count <= 0) {
       throw new HanjaEditorRangeError('invalid-selection', '변환할 글자를 선택해 주세요.');
@@ -81,6 +81,7 @@ export function readConversionSource(
   }
 
   const cursor = inputHandler.getCursorPosition();
+  assertSupportedContainer(cursor);
   const paragraphText = readParagraph(services.wasm, cursor);
   const word = findHangulWordRange(paragraphText, cursor.charOffset);
   if (!word) {
@@ -109,79 +110,19 @@ export function replaceConversionSource(
   replacement: string,
 ): boolean {
   if (!replacement || replacement === source.text) return false;
-  getInputHandlerCursorAccess(inputHandler)?.clearSelection?.();
   inputHandler.executeOperation({
     kind: 'command',
-    command: new ReplaceTextCommand(
+    command: new HanjaReplaceCommand(
       source.start,
+      source.text,
       source.originalText,
       source.rangeLength,
       replacement,
     ),
+    meta: { refresh: 'full' },
   });
+  getInputHandlerCursorAccess(inputHandler)?.clearSelection?.();
   return true;
-}
-
-class ReplaceTextCommand implements EditCommand {
-  readonly type = 'replaceText';
-  readonly timestamp = Date.now();
-  private readonly deleteCommand: DeleteTextCommand;
-  private readonly insertCommand: InsertTextCommand;
-  private readonly deleteReplacementCommand: DeleteTextCommand;
-  private effects: TextMutationEffects = NO_TEXT_MUTATION_EFFECTS;
-
-  constructor(
-    private readonly position: DocumentPosition,
-    private readonly originalText: string,
-    private readonly originalLength: number,
-    private readonly replacementText: string,
-  ) {
-    this.deleteCommand = new DeleteTextCommand(position, originalLength, 'forward', originalText);
-    this.insertCommand = new InsertTextCommand(position, replacementText);
-    this.deleteReplacementCommand = new DeleteTextCommand(
-      position,
-      characterCount(replacementText),
-      'forward',
-      replacementText,
-    );
-  }
-
-  execute(wasm: WasmBridge): DocumentPosition {
-    this.deleteCommand.execute(wasm);
-    this.insertCommand.execute(wasm);
-    this.effects = mergeEffects(
-      this.deleteCommand.consumeTextMutationEffects(),
-      this.insertCommand.consumeTextMutationEffects(),
-    );
-    return { ...this.position, charOffset: this.position.charOffset + characterCount(this.replacementText) };
-  }
-
-  undo(wasm: WasmBridge): DocumentPosition {
-    this.deleteReplacementCommand.execute(wasm);
-    this.deleteCommand.undo(wasm);
-    this.effects = IMMEDIATE_TEXT_MUTATION_EFFECTS;
-    return { ...this.position, charOffset: this.position.charOffset + this.originalLength };
-  }
-
-  consumeTextMutationEffects(): TextMutationEffects {
-    const effects = this.effects;
-    this.effects = NO_TEXT_MUTATION_EFFECTS;
-    return effects;
-  }
-
-  mergeWith(): null {
-    return null;
-  }
-}
-
-function mergeEffects(first: TextMutationEffects, second: TextMutationEffects): TextMutationEffects {
-  if (first === NO_TEXT_MUTATION_EFFECTS) return second;
-  if (second === NO_TEXT_MUTATION_EFFECTS) return first;
-  return {
-    deferredPagination: first.deferredPagination || second.deferredPagination,
-    cellFlowChanged: first.cellFlowChanged || second.cellFlowChanged,
-    paginationCompleted: first.paginationCompleted || second.paginationCompleted,
-  };
 }
 
 function sourceFrom(
@@ -207,16 +148,6 @@ function sourceFrom(
 }
 
 function readParagraph(wasm: WasmBridge, position: DocumentPosition): string {
-  const cellPath = position.cellPath ?? [];
-  if (cellPath.length > 1) {
-    const path = JSON.stringify(cellPath);
-    const length = wasm.getCellParagraphLengthByPath(
-      position.sectionIndex,
-      position.parentParaIndex!,
-      path,
-    );
-    return wasm.getTextInCellByPath(position.sectionIndex, position.parentParaIndex!, path, 0, length);
-  }
   if (position.parentParaIndex !== undefined) {
     const length = wasm.getCellParagraphLength(
       position.sectionIndex,
@@ -240,16 +171,6 @@ function readParagraph(wasm: WasmBridge, position: DocumentPosition): string {
 }
 
 function readText(wasm: WasmBridge, position: DocumentPosition, count: number): string {
-  const cellPath = position.cellPath ?? [];
-  if (cellPath.length > 1) {
-    return wasm.getTextInCellByPath(
-      position.sectionIndex,
-      position.parentParaIndex!,
-      JSON.stringify(cellPath),
-      position.charOffset,
-      count,
-    );
-  }
   if (position.parentParaIndex !== undefined) {
     return wasm.getTextInCell(
       position.sectionIndex,
@@ -262,6 +183,15 @@ function readText(wasm: WasmBridge, position: DocumentPosition, count: number): 
     );
   }
   return wasm.getTextRange(position.sectionIndex, position.paragraphIndex, position.charOffset, count);
+}
+
+function assertSupportedContainer(position: DocumentPosition): void {
+  if ((position.cellPath?.length ?? 0) > 1) {
+    throw new HanjaEditorRangeError(
+      'unsupported-context',
+      '중첩 표 셀에서는 아직 문자 서식을 보존한 한자 변환을 지원하지 않습니다.',
+    );
+  }
 }
 
 function assertSameTextContainer(start: DocumentPosition, end: DocumentPosition): void {
@@ -305,8 +235,4 @@ function positionKey(position: DocumentPosition): object {
 
 function isHangulAt(value: readonly string[], index: number): boolean {
   return index >= 0 && index < value.length && /[가-힣]/u.test(value[index] ?? '');
-}
-
-function characterCount(value: string): number {
-  return Array.from(value).length;
 }

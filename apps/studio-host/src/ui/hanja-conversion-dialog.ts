@@ -35,6 +35,7 @@ function openWordDialog(result: HanjaWordLookup): Promise<string | null> {
         item.addEventListener('click', () => {
           selectedIndex = index;
           updateSelection();
+          list.focus();
         });
         item.addEventListener('dblclick', () => shell.close(candidate.text));
         list.appendChild(item);
@@ -114,6 +115,8 @@ function openSyllableDialog(result: HanjaSyllableLookup): Promise<string | null>
         });
         syllableTabs.appendChild(button);
       });
+      const activeTab = syllableTabs.children[activeSyllable];
+      activeTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     };
 
     const renderCandidates = () => {
@@ -126,7 +129,10 @@ function openSyllableDialog(result: HanjaSyllableLookup): Promise<string | null>
         item.dataset.index = String(index);
         item.addEventListener('click', () => {
           selectedIndices[activeSyllable] = index;
-          render();
+          renderTabs();
+          updateListSelection(list, index);
+          shell.previewValue.textContent = assembledResult();
+          list.focus();
         });
         item.addEventListener('dblclick', acceptAndAdvance);
         list.appendChild(item);
@@ -144,6 +150,7 @@ function openSyllableDialog(result: HanjaSyllableLookup): Promise<string | null>
       if (activeSyllable < result.syllables.length - 1) {
         activeSyllable += 1;
         render();
+        list.focus();
       } else {
         shell.close(assembledResult());
       }

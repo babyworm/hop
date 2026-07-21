@@ -1,2 +1,2 @@
-apps/studio-host/public/dictionaries/hanja/*.json linguist-generated=true
-assets/dictionaries/hanja/*.json linguist-generated=true
+apps/studio-host/public/dictionaries/hanja/*.json text eol=lf linguist-generated=true
+assets/dictionaries/hanja/*.json text eol=lf linguist-generated=true

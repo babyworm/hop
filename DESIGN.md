@@ -107,7 +107,10 @@ Dialogs use a desktop width capped by `calc(100vw - 32px)` and a candidate list 
 
 - HOP UI and behavior live in `apps/studio-host`; `third_party/rhwp` remains read-only.
 - The bundled static dictionary is the runtime source. No API key or network service is required.
-- New behavior must use the existing command registry and shortcut matcher.
+- Commands must dispatch through the existing registry. Shortcuts normally use the late matcher;
+  F9 is the narrow exception because it must run before upstream clears the text selection. Its
+  capture handler may run only for unmodified F9 from the active editor input, with no modal, IME
+  composition, or image/shape/textbox/connector/polygon placement mode active.
 - Text mutation goes through upstream's undo-aware operation router.
 - Replacement lengths use document character counts rather than JavaScript UTF-16 code units so supplementary-plane Hanja remain undo-safe.
 - DOM text uses `textContent`; dictionary content is never injected as HTML.

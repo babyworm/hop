@@ -6,11 +6,11 @@ import {
 import { DocumentDirtyState, EventBus } from '@/upstream/core';
 import type { DocumentInfo } from '@/upstream/core';
 import { createDesktopDocument, setupDesktopEvents } from '@/core/desktop-events';
-import { advanceDocumentGeneration } from './core/document-generation';
 import { detectDesktopPlatform, hasPrimaryModifier, hydrateDesktopPlatform } from '@/core/platform';
 import { CanvasView } from '@/view/canvas-view';
 import {
   CellSelectionRenderer,
+  getInputHandlerShortcutCaptureState,
   InputHandler,
   TableObjectRenderer,
   TableResizeRenderer,
@@ -27,6 +27,7 @@ import { enhanceCustomSelects } from '@/ui/custom-select';
 import { UpdateNotice, type UpdateNoticeActions } from '@/ui/update-notice';
 import { HomeScreen } from '@/ui/home-screen';
 import type { DesktopBridgeApi } from '@/core/tauri-bridge';
+import { handleHanjaShortcutCapture } from '@/command/shortcut-map';
 import { createCommandRuntime } from './host/command-runtime';
 
 const wasm = createBridge();
@@ -68,6 +69,12 @@ const commandRuntime = createCommandRuntime({
   setStatusMessage: (message) => { sbMessage().textContent = message; },
 });
 const { dispatcher, registry, services: commandServices } = commandRuntime;
+document.addEventListener('keydown', (event) => {
+  handleHanjaShortcutCapture(event, dispatcher, {
+    ...getInputHandlerShortcutCaptureState(inputHandler),
+    hasActiveModal: document.querySelector('.modal-overlay') !== null,
+  });
+}, true);
 
 async function initialize(): Promise<void> {
   const msg = sbMessage();
@@ -533,7 +540,6 @@ async function initializeDocument(
   docInfo: DocumentInfo,
   displayName: string,
 ): Promise<void> {
-  advanceDocumentGeneration();
   const msg = sbMessage();
   try {
     if (docInfo.fontsUsed?.length) {

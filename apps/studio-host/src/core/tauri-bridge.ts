@@ -1,7 +1,7 @@
-import { WasmBridge } from '@/upstream/core';
 import type { DocumentInfo } from '@/upstream/core';
 import { remove, stat } from '@tauri-apps/plugin-fs';
 import { finiteFileSize, readFileInChunks, writeFileInChunks } from './chunked-fs';
+import { PrimaryDocumentWasmBridge } from './document-wasm-bridge';
 
 type DocumentFormat = 'hwp' | 'hwpx';
 
@@ -93,7 +93,7 @@ export interface DesktopBridgeApi {
   confirmWindowClose(): Promise<boolean>;
 }
 
-export class TauriBridge extends WasmBridge implements DesktopBridgeApi {
+export class TauriBridge extends PrimaryDocumentWasmBridge implements DesktopBridgeApi {
   private docId: string | null = null;
   private sourcePath: string | null = null;
   private sourceFormat: DocumentFormat = 'hwp';

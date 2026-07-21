@@ -57,39 +57,36 @@ describe('editor conversion range', () => {
     expect(source).toMatchObject({ text: '하', originalText: decomposed, rangeLength: 2 });
   });
 
-  it.each([
-    {
-      name: 'flat table cell',
-      position: {
-        sectionIndex: 0, paragraphIndex: 0, charOffset: 2,
-        parentParaIndex: 3, controlIndex: 1, cellIndex: 2, cellParaIndex: 0,
-      },
-      wasm: {
-        getCellParagraphLength: vi.fn(() => 5),
-        getTextInCell: vi.fn(() => '학교 편집'),
-      },
-    },
-    {
-      name: 'nested table cell',
-      position: {
-        sectionIndex: 0, paragraphIndex: 0, charOffset: 2, parentParaIndex: 3,
-        cellPath: [
-          { controlIndex: 1, cellIndex: 2, cellParaIndex: 0 },
-          { controlIndex: 0, cellIndex: 1, cellParaIndex: 0 },
-        ],
-      },
-      wasm: {
-        getCellParagraphLengthByPath: vi.fn(() => 5),
-        getTextInCellByPath: vi.fn(() => '학교 편집'),
-      },
-    },
-  ])('reads the current word from a $name', ({ position, wasm }) => {
+  it('reads the current word from a flat table cell', () => {
+    const position = {
+      sectionIndex: 0, paragraphIndex: 0, charOffset: 2,
+      parentParaIndex: 3, controlIndex: 1, cellIndex: 2, cellParaIndex: 0,
+    };
+    const wasm = {
+      getCellParagraphLength: vi.fn(() => 5),
+      getTextInCell: vi.fn(() => '학교 편집'),
+    };
     const source = readConversionSource({
       wasm,
       getInputHandler: () => ({ getSelection: () => null, getCursorPosition: () => position }),
     } as never);
 
     expect(source).toMatchObject({ text: '학교', start: { charOffset: 0 }, end: { charOffset: 2 } });
+  });
+
+  it('rejects nested table cells whose character shapes cannot be restored by path', () => {
+    const position = {
+      sectionIndex: 0, paragraphIndex: 0, charOffset: 2, parentParaIndex: 3,
+      cellPath: [
+        { controlIndex: 1, cellIndex: 2, cellParaIndex: 0 },
+        { controlIndex: 0, cellIndex: 1, cellParaIndex: 0 },
+      ],
+    };
+
+    expect(() => readConversionSource({
+      wasm: {},
+      getInputHandler: () => ({ getSelection: () => null, getCursorPosition: () => position }),
+    } as never)).toThrow(/중첩 표/);
   });
 
   it('rejects a pending conversion after the document generation changes', () => {
@@ -166,40 +163,32 @@ describe('editor conversion range', () => {
 
     expect(clearSelection).toHaveBeenCalledOnce();
     expect(executeOperation).toHaveBeenCalledWith(expect.objectContaining({ kind: 'command' }));
-
-    const descriptor = executeOperation.mock.calls[0]?.[0] as { command: {
-      execute(wasm: unknown): unknown;
-      undo(wasm: unknown): unknown;
-    } };
-    const wasm = { deleteText: vi.fn(), insertText: vi.fn() };
-    expect(descriptor.command.execute(wasm)).toMatchObject({ charOffset: 2 });
-    expect(wasm.deleteText).toHaveBeenCalledWith(0, 0, 0, 2);
-    expect(wasm.insertText).toHaveBeenCalledWith(0, 0, 0, '學校');
-
-    expect(descriptor.command.undo(wasm)).toMatchObject({ charOffset: 2 });
-    expect(wasm.deleteText).toHaveBeenLastCalledWith(0, 0, 0, 2);
-    expect(wasm.insertText).toHaveBeenLastCalledWith(0, 0, 0, '학교');
+    expect(executeOperation.mock.calls[0]?.[0]).toMatchObject({
+      command: { type: 'replaceText' },
+      meta: { refresh: 'full' },
+    });
   });
 
-  it('uses Unicode scalar counts when undoing supplementary-plane Hanja', () => {
-    const executeOperation = vi.fn();
+  it('keeps the selection when command routing throws', () => {
+    const clearSelection = vi.fn();
+    const inputHandler = {
+      executeOperation: vi.fn(() => { throw new Error('injected operation failure'); }),
+      cursor: { clearSelection },
+    };
     const source = {
-      text: '창황실색',
-      originalText: '창황실색',
-      rangeLength: 4,
-      start: { sectionIndex: 0, paragraphIndex: 0, charOffset: 1 },
-      end: { sectionIndex: 0, paragraphIndex: 0, charOffset: 5 },
+      text: '학교',
+      originalText: '학교',
+      rangeLength: 2,
+      start: { sectionIndex: 0, paragraphIndex: 0, charOffset: 0 },
+      end: { sectionIndex: 0, paragraphIndex: 0, charOffset: 2 },
       documentGeneration: currentDocumentGeneration(),
       fingerprint: 'stable',
-      selected: false,
+      selected: true,
     };
-    replaceConversionSource({ executeOperation } as never, source, '𢠵怳失色');
-    const command = executeOperation.mock.calls[0]?.[0].command;
-    const wasm = { deleteText: vi.fn(), insertText: vi.fn() };
 
-    expect(command.execute(wasm)).toMatchObject({ charOffset: 5 });
-    expect(command.undo(wasm)).toMatchObject({ charOffset: 5 });
-    expect(wasm.deleteText).toHaveBeenNthCalledWith(1, 0, 0, 1, 4);
-    expect(wasm.deleteText).toHaveBeenNthCalledWith(2, 0, 0, 1, 4);
+    expect(() => replaceConversionSource(inputHandler as never, source, '學校')).toThrow(
+      'injected operation failure',
+    );
+    expect(clearSelection).not.toHaveBeenCalled();
   });
 });

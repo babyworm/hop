@@ -1,19 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openHanjaConversionDialog } from './hanja-conversion-dialog';
 
+const hanjaDialogCss = readNodeTextFile(
+  new URL('../styles/hanja-conversion-dialog.css', import.meta.url),
+);
+
 class FakeElement {
   id = '';
   className = '';
   textContent = '';
   type = '';
-  tabIndex = -1;
+  tabIndex: number;
   dataset: Record<string, string> = {};
   children: FakeElement[] = [];
   parent: FakeElement | null = null;
   private attributes = new Map<string, string>();
   private listeners = new Map<string, Array<(event: FakeEvent) => void>>();
+  readonly scrollIntoViewCalls: ScrollIntoViewOptions[] = [];
 
-  constructor(private readonly owner?: FakeDocument) {}
+  constructor(private readonly owner?: FakeDocument, readonly tagName = 'DIV') {
+    this.tabIndex = tagName === 'BUTTON' ? 0 : -1;
+  }
 
   append(...children: FakeElement[]): void {
     children.forEach((child) => this.appendChild(child));
@@ -62,7 +69,9 @@ class FakeElement {
     this.parent = null;
   }
 
-  scrollIntoView(): void {}
+  scrollIntoView(options?: ScrollIntoViewOptions): void {
+    this.scrollIntoViewCalls.push(options ?? {});
+  }
 
   dispatch(type: string, event = new FakeEvent()): void {
     this.listeners.get(type)?.forEach((listener) => listener(event));
@@ -75,6 +84,7 @@ class FakeElement {
 
 class FakeEvent {
   key = '';
+  shiftKey = false;
   target: FakeElement | null = null;
   defaultPrevented = false;
   propagationStopped = false;
@@ -88,8 +98,8 @@ class FakeDocument {
   activeElement: FakeElement = this.body;
   private listeners = new Map<string, Array<(event: FakeEvent) => void>>();
 
-  createElement(): FakeElement {
-    return new FakeElement(this);
+  createElement(tagName = 'div'): FakeElement {
+    return new FakeElement(this, tagName.toUpperCase());
   }
 
   addEventListener(type: string, listener: (event: FakeEvent) => void): void {
@@ -104,9 +114,11 @@ class FakeDocument {
     if (index >= 0) listeners.splice(index, 1);
   }
 
-  key(key: string): FakeEvent {
+  key(key: string, target = this.activeElement, shiftKey = false): FakeEvent {
     const event = new FakeEvent();
     event.key = key;
+    event.target = target;
+    event.shiftKey = shiftKey;
     this.listeners.get('keydown')?.forEach((listener) => listener(event));
     return event;
   }
@@ -182,7 +194,186 @@ describe('openHanjaConversionDialog', () => {
     expect(fakeDocument.key('Escape').propagationStopped).toBe(true);
     await expect(pending).resolves.toBeNull();
   });
+
+  it.each([
+    ['Cancel', '.dialog-btn', 1],
+    ['Close', '.dialog-close', 0],
+  ])('lets the native %s button handle Enter', async (_name, selector, index) => {
+    const pending = openWordDialog();
+    const button = fakeDocument.body.querySelectorAll(selector)[index]!;
+    button.focus();
+
+    const event = fakeDocument.key('Enter', button);
+    if (!event.defaultPrevented) button.dispatch('click', event);
+
+    expect(event.defaultPrevented).toBe(false);
+    await expect(pending).resolves.toBeNull();
+  });
+
+  it('keeps only the listbox in the candidate tab order', async () => {
+    const pending = openWordDialog();
+    const list = fakeDocument.body.querySelectorAll('.hanja-candidate-list')[0]!;
+
+    expect(list.tabIndex).toBe(0);
+    expect(list.querySelectorAll('.hanja-candidate-item').map(({ tabIndex }) => tabIndex))
+      .toEqual([-1]);
+
+    fakeDocument.key('Escape');
+    await pending;
+  });
+
+  it('wraps Tab from the last modal control to the close button', async () => {
+    const pending = openWordDialog();
+    const cancel = fakeDocument.body.querySelectorAll('.dialog-btn')[1]!;
+    const close = fakeDocument.body.querySelectorAll('.dialog-close')[0]!;
+    cancel.focus();
+
+    const event = fakeDocument.key('Tab', cancel);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(fakeDocument.activeElement === close).toBe(true);
+    fakeDocument.key('Escape');
+    await pending;
+  });
+
+  it('wraps Shift+Tab from the close button to the last modal control', async () => {
+    const pending = openWordDialog();
+    const cancel = fakeDocument.body.querySelectorAll('.dialog-btn')[1]!;
+    const close = fakeDocument.body.querySelectorAll('.dialog-close')[0]!;
+    close.focus();
+
+    const event = fakeDocument.key('Tab', close, true);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(fakeDocument.activeElement === cancel).toBe(true);
+    fakeDocument.key('Escape');
+    await pending;
+  });
+
+  it('keeps syllable tabs, the listbox, and shared actions in the intended tab order', async () => {
+    const pending = openTwoSyllableDialog();
+    const list = fakeDocument.body.querySelectorAll('.hanja-candidate-list')[0]!;
+
+    expect(fakeDocument.body.querySelectorAll('.hanja-syllable-tab').map(({ tabIndex }) => tabIndex))
+      .toEqual([0, 0]);
+    expect(list.tabIndex).toBe(0);
+    expect(list.querySelectorAll('.hanja-candidate-item').map(({ tabIndex }) => tabIndex))
+      .toEqual([-1, -1]);
+    expect(fakeDocument.body.querySelectorAll('.dialog-btn').map(({ tabIndex }) => tabIndex))
+      .toEqual([0, 0]);
+    expect(fakeDocument.body.querySelectorAll('.dialog-close')[0]!.tabIndex).toBe(0);
+
+    fakeDocument.key('Escape');
+    await pending;
+  });
+
+  it('handles syllable Arrow and Enter mode keys only from the listbox', async () => {
+    const pending = openTwoSyllableDialog();
+    const list = fakeDocument.body.querySelectorAll('.hanja-candidate-list')[0]!;
+    const tab = fakeDocument.body.querySelectorAll('.hanja-syllable-tab')[0]!;
+
+    expect(fakeDocument.key('ArrowDown', tab).defaultPrevented).toBe(false);
+    expect(fakeDocument.key('Enter', tab).defaultPrevented).toBe(false);
+    expect(previewText(fakeDocument)).toBe('學校');
+
+    expect(fakeDocument.key('ArrowDown', list).defaultPrevented).toBe(true);
+    expect(previewText(fakeDocument)).toBe('鶴校');
+    expect(fakeDocument.key('Enter', list).defaultPrevented).toBe(true);
+    expect(fakeDocument.body.querySelectorAll('.hanja-syllable-tab').map((item) => (
+      item.getAttribute('aria-pressed')
+    ))).toEqual(['false', 'true']);
+
+    fakeDocument.key('Escape');
+    await pending;
+  });
+
+  it('returns focus to the word list after a candidate click', async () => {
+    const pending = openWordDialog();
+    const list = fakeDocument.body.querySelectorAll('.hanja-candidate-list')[0]!;
+    const candidate = list.querySelectorAll('.hanja-candidate-item')[0]!;
+    candidate.focus();
+
+    candidate.dispatch('click');
+
+    expect(fakeDocument.activeElement === list).toBe(true);
+    fakeDocument.key('Escape');
+    await pending;
+  });
+
+  it('keeps the clicked syllable candidate mounted and returns focus to its list', async () => {
+    const pending = openHanjaConversionDialog({
+      kind: 'syllables',
+      source: '학',
+      syllables: [{ source: '학', candidates: [character('學', '배울 학'), character('鶴', '학 학')] }],
+    });
+    const list = fakeDocument.body.querySelectorAll('.hanja-candidate-list')[0]!;
+    const candidate = list.querySelectorAll('.hanja-candidate-item')[1]!;
+    candidate.focus();
+
+    candidate.dispatch('click');
+
+    expect(list.querySelectorAll('.hanja-candidate-item')[1] === candidate).toBe(true);
+    expect(fakeDocument.activeElement === list).toBe(true);
+    fakeDocument.key('Escape');
+    await pending;
+  });
+
+  it('keeps the active syllable tab visible during keyboard navigation', async () => {
+    const pending = openHanjaConversionDialog({
+      kind: 'syllables',
+      source: '학'.repeat(9),
+      syllables: Array.from({ length: 9 }, () => ({
+        source: '학',
+        candidates: [character('學', '배울 학')],
+      })),
+    });
+
+    fakeDocument.key('ArrowRight');
+
+    const activeTab = fakeDocument.body.querySelectorAll('.hanja-syllable-tab')[1]!;
+    expect(activeTab.scrollIntoViewCalls).toContainEqual({ block: 'nearest', inline: 'nearest' });
+    fakeDocument.key('Escape');
+    await pending;
+  });
+
+  it('keeps candidate rows at their natural height inside the scrollable list', () => {
+    expect(cssRule('.hanja-candidate-item')).toContain('flex-shrink: 0;');
+  });
+
+  it('uses a solid focus border in addition to the soft listbox halo', () => {
+    expect(cssRule('.hanja-candidate-list:focus-visible'))
+      .toContain('outline: 1px solid var(--color-focus-border);');
+  });
+
+  it('uses contrast-safe semantic colors for the primary action in both themes', () => {
+    expect(cssRule('.hanja-conversion-dialog .dialog-btn-primary')).toContain(
+      'background: var(--color-primary-dark);',
+    );
+    expect(cssRule(':root[data-theme-effective="dark"] .hanja-conversion-dialog .dialog-btn-primary'))
+      .toContain('color: var(--color-bg);');
+  });
 });
+
+function cssRule(selector: string): string {
+  const start = hanjaDialogCss.indexOf(`${selector} {`);
+  if (start < 0) {
+    throw new Error(`missing CSS rule: ${selector}; loaded ${JSON.stringify(hanjaDialogCss.slice(0, 80))}`);
+  }
+  const end = hanjaDialogCss.indexOf('}', start);
+  if (end < 0) throw new Error(`unterminated CSS rule: ${selector}`);
+  return hanjaDialogCss.slice(start, end + 1);
+}
+
+function readNodeTextFile(url: URL): string {
+  interface NodeProcess {
+    getBuiltinModule(name: 'node:fs'): {
+      readFileSync(path: URL, encoding: 'utf8'): string;
+    };
+  }
+  const nodeProcess = (globalThis as typeof globalThis & { process?: NodeProcess }).process;
+  if (!nodeProcess) throw new Error('CSS contract tests require Node.js');
+  return nodeProcess.getBuiltinModule('node:fs').readFileSync(url, 'utf8');
+}
 
 function character(characterValue: string, label: string) {
   const words = label.split(' ');
@@ -200,4 +391,27 @@ function previewText(document: FakeDocument): string {
   const preview = document.body.querySelectorAll('.hanja-conversion-preview-value')[0];
   if (!preview) throw new Error('missing preview');
   return preview.textContent;
+}
+
+function openWordDialog(): Promise<string | null> {
+  return openHanjaConversionDialog({
+    kind: 'word',
+    source: '학',
+    candidates: [{
+      text: '學',
+      source: 1,
+      characters: [{ character: '學', label: '배울 학', reading: '학', meaning: '배울' }],
+    }],
+  });
+}
+
+function openTwoSyllableDialog(): Promise<string | null> {
+  return openHanjaConversionDialog({
+    kind: 'syllables',
+    source: '학교',
+    syllables: [
+      { source: '학', candidates: [character('學', '배울 학'), character('鶴', '학 학')] },
+      { source: '교', candidates: [character('校', '학교 교')] },
+    ],
+  });
 }

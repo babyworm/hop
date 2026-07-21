@@ -1,4 +1,5 @@
-import { WasmBridge } from '@/upstream/core';
+import type { WasmBridge } from '@/upstream/core';
+import { PrimaryDocumentWasmBridge } from './document-wasm-bridge';
 import { TauriBridge } from './tauri-bridge';
 
 export function isTauriRuntime(): boolean {
@@ -13,5 +14,5 @@ export function createBridge(): WasmBridge {
   if (isTauriRuntime()) {
     return new TauriBridge();
   }
-  return new WasmBridge();
+  return new PrimaryDocumentWasmBridge();
 }

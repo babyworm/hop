@@ -7,11 +7,54 @@ import { hasPrimaryModifier } from '../core/platform';
 export type { ShortcutDef };
 
 const hopShortcuts: [ShortcutDef, string][] = [
-  [{ key: 'f9' }, 'edit:convert-hanja'],
   [{ key: 'n', ctrl: true, shift: true }, 'file:new-window'],
   [{ key: 'o', ctrl: true, alt: true }, 'file:open-recent'],
   [{ key: 's', ctrl: true, shift: true }, 'file:save-as'],
 ];
+
+type HanjaShortcutEvent = Pick<
+  KeyboardEvent,
+  | 'key'
+  | 'ctrlKey'
+  | 'metaKey'
+  | 'shiftKey'
+  | 'altKey'
+  | 'target'
+  | 'isComposing'
+  | 'keyCode'
+  | 'preventDefault'
+  | 'stopPropagation'
+>;
+
+export type HanjaShortcutCaptureState = {
+  readonly editorInput: EventTarget | null;
+  readonly isEditorActive: boolean;
+  readonly hasActiveModal: boolean;
+  readonly isInternallyComposing: boolean;
+  readonly hasActivePlacementMode: boolean;
+};
+
+export function handleHanjaShortcutCapture(
+  event: HanjaShortcutEvent,
+  dispatcher: { dispatch(commandId: string): boolean },
+  state: HanjaShortcutCaptureState,
+): boolean {
+  if (
+    event.key.toLowerCase() !== 'f9' ||
+    event.ctrlKey || event.metaKey || event.shiftKey || event.altKey ||
+    state.editorInput === null || event.target !== state.editorInput ||
+    !state.isEditorActive || state.hasActiveModal ||
+    event.isComposing || event.keyCode === 229 || state.isInternallyComposing ||
+    state.hasActivePlacementMode
+  ) {
+    return false;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  dispatcher.dispatch('edit:convert-hanja');
+  return true;
+}
 
 const hopShortcutKeys = new Set(hopShortcuts.map(([shortcut]) => shortcutKey(shortcut)));
 

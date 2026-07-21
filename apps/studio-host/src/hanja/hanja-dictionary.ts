@@ -8,6 +8,13 @@ import type {
   HanjaReadingIndex,
   HanjaWordShard,
 } from './hanja-types';
+import {
+  HanjaLookupError,
+  parseHanjaCharacterDatabase,
+  parseHanjaManifest,
+  parseHanjaReadingIndex,
+  parseHanjaWordShard,
+} from './hanja-dictionary-validation';
 
 export type {
   HanjaCharacterCandidate,
@@ -18,26 +25,12 @@ export type {
   HanjaWordCandidate,
   HanjaWordLookup,
 } from './hanja-types';
-
-export class HanjaLookupError extends Error {
-  readonly asset?: string;
-  readonly status?: number;
-
-  constructor(
-    readonly code: 'invalid-input' | 'missing-candidate' | 'invalid-data' | 'load-failed',
-    message: string,
-    details: { asset?: string; status?: number; cause?: unknown } = {},
-  ) {
-    super(message, { cause: details.cause });
-    this.name = 'HanjaLookupError';
-    this.asset = details.asset;
-    this.status = details.status;
-  }
-}
+export { HanjaLookupError } from './hanja-dictionary-validation';
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 const MAX_CONVERSION_LENGTH = 64;
+const MAX_ASSET_BYTES = 8 * 1024 * 1024;
 
 export class HanjaDictionary {
   private readonly baseUrl: string;
@@ -97,28 +90,8 @@ export class HanjaDictionary {
 
   private loadManifest(): Promise<HanjaManifest> {
     if (!this.manifestPromise) {
-      this.manifestPromise = this.loadJson<HanjaManifest>('manifest.json')
-        .then((manifest) => {
-          if (
-            manifest.schemaVersion !== 1 ||
-            typeof manifest.characterDatabase?.file !== 'string' ||
-            typeof manifest.readingIndex?.file !== 'string' ||
-            !Array.isArray(manifest.wordDatabase?.initialShards) ||
-            manifest.wordDatabase.initialShards.length !== 19 ||
-            manifest.wordDatabase.initialShards.some((shard) => typeof shard !== 'string' || !shard) ||
-            !Array.isArray(manifest.wordDatabase?.files) ||
-            manifest.wordDatabase.files.some((file) =>
-              typeof file?.shard !== 'string' || !file.shard ||
-              typeof file.file !== 'string' || !file.file)
-          ) {
-            throw new HanjaLookupError(
-              'invalid-data',
-              '지원하지 않는 한자 사전 매니페스트입니다.',
-              { asset: 'manifest.json' },
-            );
-          }
-          return manifest;
-        })
+      this.manifestPromise = this.loadJson('manifest.json')
+        .then((manifest) => parseHanjaManifest(manifest, 'manifest.json'))
         .catch((error) => {
           this.manifestPromise = null;
           throw normalizeLoadError(error);
@@ -135,24 +108,19 @@ export class HanjaDictionary {
       this.corePromise = this.loadManifest()
         .then(async (manifest) => {
           const [characters, readings] = await Promise.all([
-            this.loadJson<HanjaCharacterDatabase>(manifest.characterDatabase.file),
-            this.loadJson<HanjaReadingIndex>(manifest.readingIndex.file),
+            this.loadJson(manifest.characterDatabase.file),
+            this.loadJson(manifest.readingIndex.file),
           ]);
-          if (characters.schemaVersion !== 1 || !characters.entries) {
-            throw new HanjaLookupError(
-              'invalid-data',
-              '지원하지 않는 한자 글자 사전입니다.',
-              { asset: manifest.characterDatabase.file },
-            );
-          }
-          if (readings.schemaVersion !== 1 || !readings.entries) {
-            throw new HanjaLookupError(
-              'invalid-data',
-              '지원하지 않는 한자 음가 색인입니다.',
-              { asset: manifest.readingIndex.file },
-            );
-          }
-          return { characters, readings };
+          const parsedCharacters = parseHanjaCharacterDatabase(
+            characters,
+            manifest.characterDatabase.file,
+          );
+          const parsedReadings = parseHanjaReadingIndex(
+            readings,
+            parsedCharacters,
+            manifest.readingIndex.file,
+          );
+          return { characters: parsedCharacters, readings: parsedReadings };
         })
         .catch((error) => {
           this.corePromise = null;
@@ -176,23 +144,9 @@ export class HanjaDictionary {
             { asset: 'manifest.json' },
           );
         }
-        return { descriptor, wordShard: await this.loadJson<HanjaWordShard>(descriptor.file) };
+        return { descriptor, wordShard: await this.loadJson(descriptor.file) };
       })
-      .then(({ descriptor, wordShard }) => {
-        if (
-          wordShard.schemaVersion !== 1 ||
-          wordShard.shard !== shard ||
-          !wordShard.entries ||
-          typeof wordShard.entries !== 'object'
-        ) {
-          throw new HanjaLookupError(
-            'invalid-data',
-            '한자 단어 샤드 형식이 올바르지 않습니다.',
-            { asset: descriptor.file },
-          );
-        }
-        return wordShard;
-      })
+      .then(({ descriptor, wordShard }) => parseHanjaWordShard(wordShard, shard, descriptor.file))
       .catch((error) => {
         this.shardPromises.delete(shard);
         throw normalizeLoadError(error);
@@ -201,7 +155,7 @@ export class HanjaDictionary {
     return promise;
   }
 
-  private async loadJson<T>(file: string): Promise<T> {
+  private async loadJson(file: string): Promise<unknown> {
     let response: Response;
     try {
       response = await this.fetcher(`${this.baseUrl}${file}`);
@@ -215,8 +169,27 @@ export class HanjaDictionary {
         { asset: file, status: response.status },
       );
     }
+    let bytes: ArrayBuffer;
     try {
-      return await response.json() as T;
+      bytes = await response.arrayBuffer();
+    } catch (error) {
+      throw new HanjaLookupError(
+        'invalid-data',
+        '한자 사전 파일을 읽지 못했습니다.',
+        { asset: file, cause: error },
+      );
+    }
+    if (bytes.byteLength > MAX_ASSET_BYTES) {
+      throw new HanjaLookupError(
+        'invalid-data',
+        '한자 사전 파일이 허용된 크기를 초과했습니다.',
+        { asset: file },
+      );
+    }
+    try {
+      const json = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      const value: unknown = JSON.parse(json);
+      return value;
     } catch (error) {
       throw new HanjaLookupError(
         'invalid-data',
@@ -284,14 +257,24 @@ function detailFromRecord(
   record: HanjaCharacterRecord,
 ): HanjaGlyphDetail {
   const matchingLabel = record.labels.find((label) => label.split(/\s+/u).at(-1) === preferredReading);
-  const fallbackReading = preferredReading || record.readings[0] || '';
-  const label = matchingLabel ?? record.labels[0] ?? `${fallbackReading} (뜻 정보 없음)`;
-  const words = label.split(/\s+/u);
+  if (matchingLabel) {
+    const words = matchingLabel.split(/\s+/u);
+    return {
+      character,
+      label: matchingLabel,
+      reading: words.at(-1) ?? preferredReading,
+      meaning: words.slice(0, -1).join(' '),
+    };
+  }
+
+  const reading = preferredReading || record.readings[0] || '';
+  const fallbackWords = (record.labels[0] ?? '').split(/\s+/u);
+  const meaning = record.meanings[0] ?? fallbackWords.slice(0, -1).join(' ');
   return {
     character,
-    label,
-    reading: words.at(-1) ?? preferredReading,
-    meaning: words.slice(0, -1).join(' '),
+    label: meaning ? `${meaning} ${reading}` : `${reading} (뜻 정보 없음)`,
+    reading,
+    meaning,
   };
 }
 

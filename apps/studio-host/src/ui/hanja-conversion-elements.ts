@@ -21,6 +21,7 @@ export function createDialogShell(
   const dialogId = `hanja-conversion-${++dialogSequence}`;
   const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   let settled = false;
+  let modeKeyTarget: HTMLElement | null = null;
   let modeKeyHandler: (event: KeyboardEvent) => boolean = () => false;
 
   const overlay = document.createElement('div');
@@ -39,7 +40,19 @@ export function createDialogShell(
       close(null);
       return;
     }
-    if (modeKeyHandler(event)) event.preventDefault();
+    if (event.key === 'Tab') {
+      if (!event.shiftKey && event.target === cancelButton) {
+        event.preventDefault();
+        closeButton.focus();
+        return;
+      }
+      if (event.shiftKey && event.target === closeButton) {
+        event.preventDefault();
+        cancelButton.focus();
+        return;
+      }
+    }
+    if (event.target === modeKeyTarget && modeKeyHandler(event)) event.preventDefault();
   };
 
   const close = (value: string | null) => {
@@ -66,6 +79,7 @@ export function createDialogShell(
     close,
     setKeyHandler(handler) { modeKeyHandler = handler; },
     mount(focusTarget) {
+      modeKeyTarget = focusTarget;
       document.body.appendChild(overlay);
       document.addEventListener('keydown', onKeyDown, true);
       focusTarget.focus();
@@ -218,5 +232,6 @@ function candidateShell(selected: boolean): HTMLButtonElement {
   item.className = 'hanja-candidate-item';
   item.setAttribute('role', 'option');
   item.setAttribute('aria-selected', String(selected));
+  item.tabIndex = -1;
   return item;
 }
