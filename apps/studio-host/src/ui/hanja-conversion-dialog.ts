@@ -1,6 +1,8 @@
 import type {
+  HanjaCharacterCandidate,
   HanjaLookupResult,
   HanjaSyllableLookup,
+  HanjaToHangulLookup,
   HanjaWordLookup,
 } from '../hanja/hanja-dictionary';
 import {
@@ -12,9 +14,9 @@ import {
 } from './hanja-conversion-elements';
 
 export function openHanjaConversionDialog(result: HanjaLookupResult): Promise<string | null> {
-  return result.kind === 'word'
-    ? openWordDialog(result)
-    : openSyllableDialog(result);
+  if (result.kind === 'word') return openWordDialog(result);
+  if (result.kind === 'syllables') return openSyllableDialog(result);
+  return openHangulDialog(result);
 }
 
 function openWordDialog(result: HanjaWordLookup): Promise<string | null> {
@@ -74,61 +76,101 @@ function openWordDialog(result: HanjaWordLookup): Promise<string | null> {
 }
 
 function openSyllableDialog(result: HanjaSyllableLookup): Promise<string | null> {
+  return openPerCharacterDialog(result.source, result.syllables, {
+    modeLabel: '글자별 변환',
+    description: '단어 후보가 없어 한 음절씩 변환합니다. 좌·우 방향키로 음절을 이동하세요.',
+    tabLabel: '변환할 음절',
+    listLabel: '한자 글자 후보',
+    candidateValue: (candidate) => candidate.character,
+  });
+}
+
+function openHangulDialog(result: HanjaToHangulLookup): Promise<string | null> {
+  return openPerCharacterDialog(result.source, result.characters, {
+    modeLabel: '한자에서 한글로',
+    description: '각 한자의 음과 훈(뜻)을 확인하고 한글 음을 선택하세요.',
+    tabLabel: '변환할 한자',
+    listLabel: '한글 음과 훈 후보',
+    candidateValue: (candidate) => candidate.reading,
+  });
+}
+
+interface PerCharacterUnit {
+  source: string;
+  candidates: HanjaCharacterCandidate[];
+}
+
+interface PerCharacterDialogOptions {
+  modeLabel: string;
+  description: string;
+  tabLabel: string;
+  listLabel: string;
+  candidateValue(candidate: HanjaCharacterCandidate): string;
+}
+
+function openPerCharacterDialog(
+  sourceText: string,
+  units: PerCharacterUnit[],
+  options: PerCharacterDialogOptions,
+): Promise<string | null> {
   return new Promise((resolve) => {
-    let activeSyllable = 0;
-    const selectedIndices = result.syllables.map(() => 0);
-    const shell = createDialogShell('글자별 변환', result.source, resolve);
-    shell.description.textContent = '단어 후보가 없어 한 음절씩 변환합니다. 좌·우 방향키로 음절을 이동하세요.';
+    let activeUnit = 0;
+    const selectedIndices = units.map(() => 0);
+    const shell = createDialogShell(options.modeLabel, sourceText, resolve);
+    shell.description.textContent = options.description;
 
     const syllableTabs = document.createElement('div');
     syllableTabs.className = 'hanja-syllable-tabs';
-    syllableTabs.setAttribute('aria-label', '변환할 음절');
+    syllableTabs.setAttribute('aria-label', options.tabLabel);
 
-    const list = createCandidateList(shell.dialogId, '한자 글자 후보');
+    const list = createCandidateList(shell.dialogId, options.listLabel);
     shell.body.append(syllableTabs, list);
 
-    const assembledResult = () => result.syllables
-      .map((syllable, index) => syllable.candidates[selectedIndices[index] ?? 0]?.character ?? syllable.source)
+    const assembledResult = () => units
+      .map((unit, index) => {
+        const candidate = unit.candidates[selectedIndices[index] ?? 0];
+        return candidate ? options.candidateValue(candidate) : unit.source;
+      })
       .join('');
 
     const renderTabs = () => {
       syllableTabs.replaceChildren();
-      result.syllables.forEach((syllable, index) => {
-        const candidate = syllable.candidates[selectedIndices[index] ?? 0];
+      units.forEach((unit, index) => {
+        const candidate = unit.candidates[selectedIndices[index] ?? 0];
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'hanja-syllable-tab';
-        button.dataset.active = String(index === activeSyllable);
-        button.setAttribute('aria-pressed', String(index === activeSyllable));
+        button.dataset.active = String(index === activeUnit);
+        button.setAttribute('aria-pressed', String(index === activeUnit));
 
         const source = document.createElement('span');
         source.className = 'hanja-syllable-source';
-        source.textContent = syllable.source;
+        source.textContent = unit.source;
         const replacement = document.createElement('span');
         replacement.className = 'hanja-syllable-choice';
-        replacement.textContent = candidate?.character ?? '—';
+        replacement.textContent = candidate ? options.candidateValue(candidate) : '—';
         button.append(source, replacement);
         button.addEventListener('click', () => {
-          activeSyllable = index;
+          activeUnit = index;
           render();
           list.focus();
         });
         syllableTabs.appendChild(button);
       });
-      const activeTab = syllableTabs.children[activeSyllable];
+      const activeTab = syllableTabs.children[activeUnit];
       activeTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     };
 
     const renderCandidates = () => {
       list.replaceChildren();
-      const active = result.syllables[activeSyllable];
+      const active = units[activeUnit];
       if (!active) return;
       active.candidates.forEach((candidate, index) => {
-        const item = characterCandidateElement(candidate, index === selectedIndices[activeSyllable]);
-        item.id = `${shell.dialogId}-option-${activeSyllable}-${index}`;
+        const item = characterCandidateElement(candidate, index === selectedIndices[activeUnit]);
+        item.id = `${shell.dialogId}-option-${activeUnit}-${index}`;
         item.dataset.index = String(index);
         item.addEventListener('click', () => {
-          selectedIndices[activeSyllable] = index;
+          selectedIndices[activeUnit] = index;
           renderTabs();
           updateListSelection(list, index);
           shell.previewValue.textContent = assembledResult();
@@ -137,7 +179,7 @@ function openSyllableDialog(result: HanjaSyllableLookup): Promise<string | null>
         item.addEventListener('dblclick', acceptAndAdvance);
         list.appendChild(item);
       });
-      updateListSelection(list, selectedIndices[activeSyllable] ?? 0);
+      updateListSelection(list, selectedIndices[activeUnit] ?? 0);
     };
 
     const render = () => {
@@ -147,8 +189,8 @@ function openSyllableDialog(result: HanjaSyllableLookup): Promise<string | null>
     };
 
     const acceptAndAdvance = () => {
-      if (activeSyllable < result.syllables.length - 1) {
-        activeSyllable += 1;
+      if (activeUnit < units.length - 1) {
+        activeUnit += 1;
         render();
         list.focus();
       } else {
@@ -158,28 +200,28 @@ function openSyllableDialog(result: HanjaSyllableLookup): Promise<string | null>
 
     shell.applyButton.addEventListener('click', () => shell.close(assembledResult()));
     shell.setKeyHandler((event) => {
-      const active = result.syllables[activeSyllable];
+      const active = units[activeUnit];
       if (!active) return false;
       if (event.key === 'ArrowDown') {
-        selectedIndices[activeSyllable] = Math.min(
+        selectedIndices[activeUnit] = Math.min(
           active.candidates.length - 1,
-          (selectedIndices[activeSyllable] ?? 0) + 1,
+          (selectedIndices[activeUnit] ?? 0) + 1,
         );
         render();
         return true;
       }
       if (event.key === 'ArrowUp') {
-        selectedIndices[activeSyllable] = Math.max(0, (selectedIndices[activeSyllable] ?? 0) - 1);
+        selectedIndices[activeUnit] = Math.max(0, (selectedIndices[activeUnit] ?? 0) - 1);
         render();
         return true;
       }
       if (event.key === 'ArrowRight') {
-        activeSyllable = Math.min(result.syllables.length - 1, activeSyllable + 1);
+        activeUnit = Math.min(units.length - 1, activeUnit + 1);
         render();
         return true;
       }
       if (event.key === 'ArrowLeft') {
-        activeSyllable = Math.max(0, activeSyllable - 1);
+        activeUnit = Math.max(0, activeUnit - 1);
         render();
         return true;
       }

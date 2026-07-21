@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import studioHtml from '../../index.html?raw';
 import { shouldOfferHanjaContextMenu } from './hanja-context-menu';
+import { contextMenuConversionLabel } from './hanja-context-menu';
 
 describe('Hanja conversion entry points', () => {
   it('places the Input menu command directly below Character Table', () => {
@@ -26,9 +27,24 @@ describe('Hanja conversion entry points', () => {
   });
 
   it('offers the context submenu for a Hangul conversion source', () => {
-    const readSource = vi.fn(() => ({ text: '학교', selected: true }));
+    const readSource = vi.fn(() => ({
+      text: '학교',
+      selected: true,
+      direction: 'hangul-to-hanja',
+    }));
 
     expect(shouldOfferHanjaContextMenu(editableServices() as never, readSource as never)).toBe(true);
+  });
+
+  it('offers a Hangul action for a Hanja conversion source', () => {
+    const readSource = vi.fn(() => ({
+      text: '學校',
+      selected: true,
+      direction: 'hanja-to-hangul',
+    }));
+
+    expect(shouldOfferHanjaContextMenu(editableServices() as never, readSource as never)).toBe(true);
+    expect(contextMenuConversionLabel('hanja-to-hangul')).toBe('한글로 변환');
   });
 
   it('hides the context submenu for an English selection', () => {

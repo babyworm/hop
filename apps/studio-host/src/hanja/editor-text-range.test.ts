@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { advanceDocumentGeneration, currentDocumentGeneration } from '../core/document-generation';
 import {
   findHangulWordRange,
+  findConvertibleWordRange,
   isConversionSourceCurrent,
   readConversionSource,
   replaceConversionSource,
@@ -22,6 +23,26 @@ describe('findHangulWordRange', () => {
   });
 });
 
+describe('findConvertibleWordRange', () => {
+  it('finds a contiguous Hanja run and records its conversion direction', () => {
+    expect(findConvertibleWordRange('문서 學校 편집', 5)).toEqual({
+      start: 3,
+      end: 5,
+      text: '學校',
+      direction: 'hanja-to-hangul',
+    });
+  });
+
+  it('keeps supplementary-plane Hanja aligned to document scalar offsets', () => {
+    expect(findConvertibleWordRange('𢠵校 편집', 1)).toEqual({
+      start: 0,
+      end: 2,
+      text: '𢠵校',
+      direction: 'hanja-to-hangul',
+    });
+  });
+});
+
 describe('editor conversion range', () => {
   it('uses a same-paragraph selection before the current word', () => {
     const inputHandler = {
@@ -36,7 +57,11 @@ describe('editor conversion range', () => {
     const source = readConversionSource({ wasm, getInputHandler: () => inputHandler } as never);
 
     expect(source).toMatchObject({ text: '학교', start: { charOffset: 3 }, end: { charOffset: 5 } });
-    expect(source).toMatchObject({ originalText: '학교', rangeLength: 2 });
+    expect(source).toMatchObject({
+      originalText: '학교',
+      rangeLength: 2,
+      direction: 'hangul-to-hanja',
+    });
     expect(inputHandler.getCursorPosition).not.toHaveBeenCalled();
   });
 
@@ -137,6 +162,24 @@ describe('editor conversion range', () => {
     });
   });
 
+  it('reads a Hanja run at the caret for reverse conversion', () => {
+    const inputHandler = {
+      getSelection: () => null,
+      getCursorPosition: () => ({ sectionIndex: 0, paragraphIndex: 1, charOffset: 5 }),
+    };
+    const wasm = {
+      getParagraphLength: () => 8,
+      getTextRange: () => '문서 學校 편집',
+    };
+
+    expect(readConversionSource({ wasm, getInputHandler: () => inputHandler } as never)).toMatchObject({
+      text: '學校',
+      direction: 'hanja-to-hangul',
+      start: { charOffset: 3 },
+      end: { charOffset: 5 },
+    });
+  });
+
   it('applies a replacement as one undo-aware command and clears a selection', () => {
     const executeOperation = vi.fn();
     const clearSelection = vi.fn();
@@ -157,6 +200,7 @@ describe('editor conversion range', () => {
       documentGeneration: currentDocumentGeneration(),
       fingerprint: 'stable',
       selected: true,
+      direction: 'hangul-to-hanja' as const,
     };
 
     replaceConversionSource(inputHandler as never, source, '學校');
@@ -184,6 +228,7 @@ describe('editor conversion range', () => {
       documentGeneration: currentDocumentGeneration(),
       fingerprint: 'stable',
       selected: true,
+      direction: 'hangul-to-hanja' as const,
     };
 
     expect(() => replaceConversionSource(inputHandler as never, source, '學校')).toThrow(

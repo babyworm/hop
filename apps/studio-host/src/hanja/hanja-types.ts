@@ -78,4 +78,13 @@ export interface HanjaSyllableLookup {
   }>;
 }
 
-export type HanjaLookupResult = HanjaWordLookup | HanjaSyllableLookup;
+export interface HanjaToHangulLookup {
+  kind: 'hangul';
+  source: string;
+  characters: Array<{
+    source: string;
+    candidates: HanjaCharacterCandidate[];
+  }>;
+}
+
+export type HanjaLookupResult = HanjaWordLookup | HanjaSyllableLookup | HanjaToHangulLookup;

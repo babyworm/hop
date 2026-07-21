@@ -6,6 +6,7 @@ import type {
   HanjaLookupResult,
   HanjaManifest,
   HanjaReadingIndex,
+  HanjaToHangulLookup,
   HanjaWordShard,
 } from './hanja-types';
 import {
@@ -22,6 +23,7 @@ export type {
   HanjaGlyphDetail,
   HanjaLookupResult,
   HanjaSyllableLookup,
+  HanjaToHangulLookup,
   HanjaWordCandidate,
   HanjaWordLookup,
 } from './hanja-types';
@@ -86,6 +88,28 @@ export class HanjaDictionary {
       return { source: syllable, candidates };
     });
     return { kind: 'syllables', source, syllables };
+  }
+
+  async lookupHanja(input: string): Promise<HanjaToHangulLookup> {
+    const source = input.normalize('NFC');
+    if (!source || Array.from(source).length > MAX_CONVERSION_LENGTH || !isHanjaText(source)) {
+      throw new HanjaLookupError('invalid-input', '한자로 이루어진 단어만 한글로 변환할 수 있습니다.');
+    }
+
+    const { characters } = await this.loadCore();
+    const units = Array.from(source, (character) => {
+      const record = characters.entries[character];
+      if (!record) {
+        throw new HanjaLookupError('missing-candidate', `'${character}' 글자의 한글 음과 뜻이 없습니다.`);
+      }
+      const candidates = [...new Set(record.readings)]
+        .map((reading) => buildReadingCandidate(character, reading, record));
+      if (candidates.length === 0) {
+        throw new HanjaLookupError('missing-candidate', `'${character}' 글자의 한글 음과 뜻이 없습니다.`);
+      }
+      return { source: character, candidates };
+    });
+    return { kind: 'hangul', source, characters: units };
   }
 
   private loadManifest(): Promise<HanjaManifest> {
@@ -251,6 +275,27 @@ function buildCharacterCandidate(
   };
 }
 
+function buildReadingCandidate(
+  character: string,
+  reading: string,
+  record: HanjaCharacterRecord,
+): HanjaCharacterCandidate {
+  const meanings = [...new Set(record.labels.flatMap((label) => {
+    const words = label.split(/\s+/u);
+    return words.at(-1) === reading ? [words.slice(0, -1).join(' ')] : [];
+  }).filter(Boolean))];
+  const fallback = detailFromRecord(character, reading, record);
+  const meaning = meanings.length > 0 ? meanings.join(' · ') : fallback.meaning;
+  return {
+    character,
+    reading,
+    meaning,
+    label: meaning ? `${meaning} ${reading}` : fallback.label,
+    educationHanja: record.educationHanja === true,
+    personalNameHanja: record.personalNameHanja === true,
+  };
+}
+
 function detailFromRecord(
   character: string,
   preferredReading: string,
@@ -285,4 +330,8 @@ function normalizeLoadError(error: unknown, asset?: string): HanjaLookupError {
     '내장 한자 사전을 불러오지 못했습니다.',
     { asset, cause: error },
   );
+}
+
+function isHanjaText(value: string): boolean {
+  return /^\p{Script=Han}+$/u.test(value);
 }

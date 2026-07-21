@@ -22,6 +22,12 @@ const characters = {
   entries: {
     學: { readings: ['학'], labels: ['배울 학'], meanings: ['배울'], educationHanja: true },
     校: { readings: ['교'], labels: ['학교 교'], meanings: ['학교'], educationHanja: true },
+    樂: {
+      readings: ['낙', '락', '악', '요'],
+      labels: ['좋아할 요', '즐거울 락', '즐길 낙', '즐길 악', '풍류 악'],
+      meanings: ['좋아할', '즐거울', '즐길', '풍류'],
+      educationHanja: true,
+    },
   },
 };
 
@@ -91,6 +97,37 @@ describe('HanjaDictionary', () => {
         { source: '교', candidates: [{ character: '校', label: '학교 교' }] },
       ],
     });
+  });
+
+  it('looks up Hanja readings and meanings without loading a word shard', async () => {
+    const fetcher = vi.fn(async (input: string | URL) => {
+      const path = String(input);
+      if (path.endsWith('manifest.json')) return response(manifest);
+      if (path.endsWith('characters.json')) return response(characters);
+      if (path.endsWith('readings.json')) return response(readings);
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    const dictionary = new HanjaDictionary('/dictionaries/hanja/', fetcher as typeof fetch);
+
+    const result = await dictionary.lookupHanja('樂校');
+
+    expect(result).toMatchObject({
+      kind: 'hangul',
+      source: '樂校',
+      characters: [
+        {
+          source: '樂',
+          candidates: [
+            { reading: '낙', meaning: '즐길', label: '즐길 낙' },
+            { reading: '락', meaning: '즐거울', label: '즐거울 락' },
+            { reading: '악', meaning: '즐길 · 풍류', label: '즐길 · 풍류 악' },
+            { reading: '요', meaning: '좋아할', label: '좋아할 요' },
+          ],
+        },
+        { source: '校', candidates: [{ reading: '교', meaning: '학교', label: '학교 교' }] },
+      ],
+    });
+    expect(fetcher.mock.calls.some(([path]) => /words-/u.test(String(path)))).toBe(false);
   });
 
   it('labels a character with the requested reading when its canonical label uses another reading', async () => {

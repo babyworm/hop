@@ -10,6 +10,7 @@ import {
 } from '../command/commands/hanja';
 import {
   readConversionSource,
+  type HanjaConversionDirection,
   type HanjaConversionSource,
 } from '../hanja/editor-text-range';
 
@@ -24,13 +25,23 @@ export function shouldOfferHanjaContextMenu(
   services: CommandServices,
   readSource: ConversionSourceReader = readConversionSource,
 ): boolean {
-  if (!isHanjaConversionContextEditable(services.getContext())) return false;
+  return contextMenuConversionSource(services, readSource) !== null;
+}
+
+function contextMenuConversionSource(
+  services: CommandServices,
+  readSource: ConversionSourceReader = readConversionSource,
+): HanjaConversionSource | null {
+  if (!isHanjaConversionContextEditable(services.getContext())) return null;
   try {
-    readSource(services);
-    return true;
+    return readSource(services);
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function contextMenuConversionLabel(direction: HanjaConversionDirection): string {
+  return direction === 'hanja-to-hangul' ? '한글로 변환' : '한자로 변환';
 }
 
 /** Adds HOP-only conversion affordances without modifying the upstream menu. */
@@ -45,17 +56,21 @@ export class HanjaContextMenu extends ContextMenu {
 
   override show(x: number, y: number, items: ContextMenuItem[]): void {
     super.show(x, y, items);
-    if (!shouldOfferHanjaContextMenu(this.services)) return;
+    const source = contextMenuConversionSource(this.services);
+    if (!source) return;
 
     const menu = document.querySelector<HTMLElement>('.context-menu');
     if (!menu) return;
     const openLeft = menu.getBoundingClientRect().right + CONTEXT_SUBMENU_MIN_WIDTH >
       window.innerWidth;
-    menu.append(createSeparator(), this.createConversionSubmenu(openLeft));
+    menu.append(createSeparator(), this.createConversionSubmenu(source.direction, openLeft));
     keepMenuInsideViewport(menu);
   }
 
-  private createConversionSubmenu(openLeft: boolean): HTMLElement {
+  private createConversionSubmenu(
+    direction: HanjaConversionDirection,
+    openLeft: boolean,
+  ): HTMLElement {
     const submenu = document.createElement('div');
     submenu.className = 'md-sub hanja-context-submenu';
     submenu.setAttribute('aria-haspopup', 'menu');
@@ -71,7 +86,7 @@ export class HanjaContextMenu extends ContextMenu {
     const panel = document.createElement('div');
     panel.className = 'md-sub-panel';
     panel.setAttribute('role', 'menu');
-    panel.appendChild(this.createConversionItem());
+    panel.appendChild(this.createConversionItem(direction));
 
     submenu.append(label, arrow, panel);
     if (!this.hopDispatcher.isEnabled(CONVERT_HANJA_COMMAND)) {
@@ -81,12 +96,12 @@ export class HanjaContextMenu extends ContextMenu {
     return submenu;
   }
 
-  private createConversionItem(): HTMLElement {
+  private createConversionItem(direction: HanjaConversionDirection): HTMLElement {
     const item = document.createElement('div');
     item.className = 'md-item';
     item.dataset.cmd = CONVERT_HANJA_COMMAND;
     item.setAttribute('role', 'menuitem');
-    item.appendChild(document.createTextNode('한자로 변환'));
+    item.appendChild(document.createTextNode(contextMenuConversionLabel(direction)));
 
     const shortcut = document.createElement('span');
     shortcut.className = 'md-shortcut';

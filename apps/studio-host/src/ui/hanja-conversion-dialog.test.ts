@@ -184,6 +184,34 @@ describe('openHanjaConversionDialog', () => {
     await expect(pending).resolves.toBe('鶴校');
   });
 
+  it('renders Hanja readings with meanings and assembles a Hangul result', async () => {
+    const pending = openHanjaConversionDialog({
+      kind: 'hangul',
+      source: '樂校',
+      characters: [
+        {
+          source: '樂',
+          candidates: [
+            character('樂', '즐길 낙'),
+            character('樂', '즐거울 락'),
+            character('樂', '풍류 악'),
+          ],
+        },
+        { source: '校', candidates: [character('校', '학교 교')] },
+      ],
+    });
+
+    const renderedText = fakeDocument.body.descendants().map(({ textContent }) => textContent).join(' ');
+    expect(renderedText).toContain('즐길 낙');
+    expect(previewText(fakeDocument)).toBe('낙교');
+    fakeDocument.key('ArrowDown');
+    expect(previewText(fakeDocument)).toBe('락교');
+    fakeDocument.key('Enter');
+    fakeDocument.key('Enter');
+
+    await expect(pending).resolves.toBe('락교');
+  });
+
   it('cancels without a replacement on Escape', async () => {
     const pending = openHanjaConversionDialog({
       kind: 'syllables',

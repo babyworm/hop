@@ -34,7 +34,9 @@ async function convertHanja(services: CommandServices): Promise<void> {
     const source = readConversionSource(services);
     setStatusMessage('내장 한자 사전에서 후보를 찾는 중입니다…');
     dictionary ??= createBundledHanjaDictionary();
-    const lookup = await dictionary.lookup(source.text);
+    const lookup = source.direction === 'hanja-to-hangul'
+      ? await dictionary.lookupHanja(source.text)
+      : await dictionary.lookup(source.text);
     if (
       !isHanjaConversionContextEditable(services.getContext()) ||
       !isConversionSourceCurrent(services, source)
@@ -62,7 +64,7 @@ async function convertHanja(services: CommandServices): Promise<void> {
       return;
     }
     if (replaceConversionSource(inputHandler, source, replacement)) {
-      setStatusMessage(`한자 변환: ${source.text} → ${replacement}`);
+      setStatusMessage(`한글/한자 변환: ${source.text} → ${replacement}`);
     }
   } catch (error) {
     if (error instanceof HanjaLookupError) {

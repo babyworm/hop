@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const commandMocks = vi.hoisted(() => ({
   lookup: vi.fn(),
+  lookupHanja: vi.fn(),
   openDialog: vi.fn(),
   readSource: vi.fn(),
   replaceSource: vi.fn(),
@@ -12,7 +13,10 @@ vi.mock('../../hanja/hanja-dictionary', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../hanja/hanja-dictionary')>();
   return {
     ...actual,
-    createBundledHanjaDictionary: () => ({ lookup: commandMocks.lookup }),
+    createBundledHanjaDictionary: () => ({
+      lookup: commandMocks.lookup,
+      lookupHanja: commandMocks.lookupHanja,
+    }),
   };
 });
 vi.mock('../../hanja/editor-text-range', async (importOriginal) => {
@@ -51,6 +55,27 @@ describe('Hanja command', () => {
     ['multi-cell selection', { hasMultiCellSelection: true }],
   ])('disables conversion in %s', (_name, override) => {
     expect(isHanjaConversionContextEditable({ ...editableContext(), ...override } as never)).toBe(false);
+  });
+
+  it('routes a Hanja source to reverse lookup and applies the selected Hangul reading', async () => {
+    const status = { textContent: '' };
+    const source = { text: '學校', direction: 'hanja-to-hangul' };
+    vi.stubGlobal('document', { getElementById: () => status });
+    commandMocks.readSource.mockReturnValue(source);
+    commandMocks.lookupHanja.mockResolvedValue({ kind: 'hangul', source: '學校', characters: [] });
+    commandMocks.sourceCurrent.mockReturnValue(true);
+    commandMocks.openDialog.mockResolvedValue('학교');
+
+    hanjaCommands[0]!.execute({
+      getContext: () => editableContext(),
+      getInputHandler: () => ({}),
+    } as never);
+
+    await vi.waitFor(() => {
+      expect(commandMocks.replaceSource).toHaveBeenCalledWith({}, source, '학교');
+    });
+    expect(commandMocks.lookupHanja).toHaveBeenCalledWith('學校');
+    expect(commandMocks.lookup).not.toHaveBeenCalled();
   });
 
   it('rechecks editable context after the dialog resolves', async () => {

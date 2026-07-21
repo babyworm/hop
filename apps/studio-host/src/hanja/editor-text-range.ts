@@ -24,11 +24,14 @@ export interface HanjaConversionSource {
   documentGeneration: number;
   fingerprint: string;
   selected: boolean;
+  direction: HanjaConversionDirection;
 }
+
+export type HanjaConversionDirection = 'hangul-to-hanja' | 'hanja-to-hangul';
 
 export class HanjaEditorRangeError extends Error {
   constructor(
-    readonly code: 'no-editor' | 'unsupported-context' | 'invalid-selection' | 'no-hangul',
+    readonly code: 'no-editor' | 'unsupported-context' | 'invalid-selection' | 'no-convertible-text',
     message: string,
   ) {
     super(message);
@@ -51,6 +54,39 @@ export function findHangulWordRange(
   while (start > 0 && isHangulAt(characters, start - 1)) start -= 1;
   while (end < characters.length && isHangulAt(characters, end)) end += 1;
   return { start, end, text: characters.slice(start, end).join('') };
+}
+
+export function findConvertibleWordRange(
+  paragraphText: string,
+  cursorOffset: number,
+): {
+  start: number;
+  end: number;
+  text: string;
+  direction: HanjaConversionDirection;
+} | null {
+  const characters = Array.from(paragraphText);
+  const offset = Math.max(0, Math.min(characters.length, cursorOffset));
+  let index = offset;
+  let direction = conversionDirectionForCharacter(characters[index] ?? '');
+  if (!direction) {
+    index -= 1;
+    direction = conversionDirectionForCharacter(characters[index] ?? '');
+  }
+  if (!direction) return null;
+
+  let start = index;
+  let end = index + 1;
+  while (start > 0 && conversionDirectionForCharacter(characters[start - 1] ?? '') === direction) {
+    start -= 1;
+  }
+  while (
+    end < characters.length &&
+    conversionDirectionForCharacter(characters[end] ?? '') === direction
+  ) {
+    end += 1;
+  }
+  return { start, end, text: characters.slice(start, end).join(''), direction };
 }
 
 export function readConversionSource(
@@ -83,9 +119,12 @@ export function readConversionSource(
   const cursor = inputHandler.getCursorPosition();
   assertSupportedContainer(cursor);
   const paragraphText = readParagraph(services.wasm, cursor);
-  const word = findHangulWordRange(paragraphText, cursor.charOffset);
+  const word = findConvertibleWordRange(paragraphText, cursor.charOffset);
   if (!word) {
-    throw new HanjaEditorRangeError('no-hangul', '한글 단어를 선택하거나 단어 안에 커서를 놓아 주세요.');
+    throw new HanjaEditorRangeError(
+      'no-convertible-text',
+      '한글 또는 한자 단어를 선택하거나 단어 안에 커서를 놓아 주세요.',
+    );
   }
   const start = { ...cursor, charOffset: word.start };
   const end = { ...cursor, charOffset: word.end };
@@ -132,8 +171,12 @@ function sourceFrom(
   selected: boolean,
 ): HanjaConversionSource {
   const normalized = text.normalize('NFC');
-  if (!/^[가-힣]+$/u.test(normalized)) {
-    throw new HanjaEditorRangeError('no-hangul', '한글 음절로 이루어진 단어만 변환할 수 있습니다.');
+  const direction = conversionDirectionForText(normalized);
+  if (!direction) {
+    throw new HanjaEditorRangeError(
+      'no-convertible-text',
+      '한글 음절 또는 한자로만 이루어진 단어를 변환할 수 있습니다.',
+    );
   }
   const source = {
     text: normalized,
@@ -143,6 +186,7 @@ function sourceFrom(
     end: { ...end },
     documentGeneration: currentDocumentGeneration(),
     selected,
+    direction,
   };
   return { ...source, fingerprint: fingerprint(source) };
 }
@@ -203,7 +247,10 @@ function assertSameTextContainer(start: DocumentPosition, end: DocumentPosition)
     start.cellParaIndex === end.cellParaIndex &&
     JSON.stringify(start.cellPath ?? []) === JSON.stringify(end.cellPath ?? []);
   if (!same) {
-    throw new HanjaEditorRangeError('invalid-selection', '한 문단 안의 한글 단어만 변환할 수 있습니다.');
+    throw new HanjaEditorRangeError(
+      'invalid-selection',
+      '한 문단 안의 한글 또는 한자 단어만 변환할 수 있습니다.',
+    );
   }
 }
 
@@ -214,6 +261,7 @@ function fingerprint(source: Omit<HanjaConversionSource, 'fingerprint'>): string
     rangeLength: source.rangeLength,
     documentGeneration: source.documentGeneration,
     selected: source.selected,
+    direction: source.direction,
     start: positionKey(source.start),
     end: positionKey(source.end),
   });
@@ -235,4 +283,16 @@ function positionKey(position: DocumentPosition): object {
 
 function isHangulAt(value: readonly string[], index: number): boolean {
   return index >= 0 && index < value.length && /[가-힣]/u.test(value[index] ?? '');
+}
+
+function conversionDirectionForText(value: string): HanjaConversionDirection | null {
+  if (/^[가-힣]+$/u.test(value)) return 'hangul-to-hanja';
+  if (/^\p{Script=Han}+$/u.test(value)) return 'hanja-to-hangul';
+  return null;
+}
+
+function conversionDirectionForCharacter(value: string): HanjaConversionDirection | null {
+  if (/^[가-힣]$/u.test(value)) return 'hangul-to-hanja';
+  if (/^\p{Script=Han}$/u.test(value)) return 'hanja-to-hangul';
+  return null;
 }
