@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const upstreamCancelReRenderMock = vi.hoisted(() => vi.fn());
 const upstreamCancelAllMock = vi.hoisted(() => vi.fn());
+const upstreamRenderContextMock = vi.hoisted(() => vi.fn());
 
 type MockNode = {
   style: Record<string, string>;
@@ -53,7 +54,15 @@ vi.mock('@upstream/view/page-renderer', () => ({
       ) => void;
     }) {}
 
-    renderPage(pageIdx: number, canvas: HTMLCanvasElement, scale: number): void {
+    renderPage(
+      pageIdx: number,
+      canvas: HTMLCanvasElement,
+      scale: number,
+      _displayScale: number,
+      _dpr: number,
+      context: { reason?: string; allowStaticOverlayReuse?: boolean } = {},
+    ): { needsTextEditStaticLayerVerification: boolean } {
+      upstreamRenderContextMock(context);
       this.renderFlow(pageIdx, canvas, scale);
       if (canvas.parentElement) {
         const overlay = createMockNode();
@@ -61,6 +70,7 @@ vi.mock('@upstream/view/page-renderer', () => ({
         canvas.parentElement.appendChild(overlay as unknown as Node);
       }
       this.scheduleFullReRender(pageIdx, canvas, scale);
+      return { needsTextEditStaticLayerVerification: context.reason === 'text-edit' };
     }
 
     renderPageFlow(pageIdx: number, canvas: HTMLCanvasElement, scale: number): void {
@@ -126,6 +136,7 @@ describe('HopPageRenderer', () => {
     vi.useFakeTimers();
     upstreamCancelReRenderMock.mockReset();
     upstreamCancelAllMock.mockReset();
+    upstreamRenderContextMock.mockReset();
   });
 
   afterEach(() => {
@@ -175,5 +186,46 @@ describe('HopPageRenderer', () => {
     expect(wasm.renderPageToCanvasFiltered).toHaveBeenCalledTimes(1);
     expect(wasm.renderPageToCanvas).not.toHaveBeenCalled();
     expect(upstreamCancelReRenderMock).toHaveBeenCalledWith(0);
+  });
+
+  it('forwards text-edit render context and verification requirements', () => {
+    const wasm = {
+      renderPageToCanvasFiltered: vi.fn(),
+      renderPageToCanvas: vi.fn(),
+    };
+    const parent = createMockNode();
+    const canvas = createMockCanvas();
+    parent.appendChild(canvas as unknown as MockNode);
+    const renderer = new HopPageRenderer(wasm as never);
+    const context = { reason: 'text-edit' as const, allowStaticOverlayReuse: true };
+
+    const result = renderer.renderPage(0, canvas, 2, 2, 1, context);
+
+    expect(upstreamRenderContextMock).toHaveBeenCalledWith(context);
+    expect(result.needsTextEditStaticLayerVerification).toBe(true);
+
+    vi.advanceTimersByTime(600);
+    expect(wasm.renderPageToCanvasFiltered).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves image recovery timers when text editing starts after an initial render', () => {
+    const wasm = {
+      renderPageToCanvasFiltered: vi.fn(),
+      renderPageToCanvas: vi.fn(),
+    };
+    const parent = createMockNode();
+    const canvas = createMockCanvas();
+    parent.appendChild(canvas as unknown as MockNode);
+    const renderer = new HopPageRenderer(wasm as never);
+
+    renderer.renderPage(0, canvas, 2, 2, 1);
+    renderer.renderPage(0, canvas, 2, 2, 1, {
+      reason: 'text-edit',
+      allowStaticOverlayReuse: true,
+    });
+    vi.advanceTimersByTime(600);
+
+    expect(wasm.renderPageToCanvasFiltered).toHaveBeenCalledTimes(4);
+    expect(wasm.renderPageToCanvas).not.toHaveBeenCalled();
   });
 });

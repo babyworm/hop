@@ -1,6 +1,7 @@
 import { EventBus, WasmBridge } from '@/upstream/core';
 import type { PageInfo } from '@/upstream/core';
 import { CanvasPool, CoordinateSystem, ViewportManager, VirtualScroll } from '@/upstream/view';
+import type { PageRenderContext, PageRenderResult } from '@/upstream/view';
 import {
   applyCanvasDisplayLayout,
   inferCanvasDevicePixelRatio,
@@ -12,6 +13,8 @@ import {
   removePageOverlays,
 } from './page-overlays';
 
+const TEXT_EDIT_STATIC_LAYER_VERIFY_DELAY_MS = 800;
+
 export class CanvasView {
   private virtualScroll: VirtualScroll;
   private canvasPool: CanvasPool;
@@ -22,8 +25,9 @@ export class CanvasView {
   private scrollContent: HTMLElement;
   private pages: PageInfo[] = [];
   private unsubscribers: (() => void)[] = [];
-  private pendingPageRefreshes = new Set<number>();
-  private pageRefreshRafId: number | null = null;
+  private pendingTextEditRefreshes = new Map<number, PageRenderContext>();
+  private textEditRefreshRafId: number | null = null;
+  private textEditStaticLayerVerifyTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
   constructor(
     private container: HTMLElement,
@@ -130,6 +134,7 @@ export class CanvasView {
   private renderPage(
     pageIdx: number,
     canvas: HTMLCanvasElement = this.canvasPool.acquire(pageIdx),
+    context: PageRenderContext = {},
   ): void {
     const zoom = this.viewportManager.getZoom();
     const rawDpr = window.devicePixelRatio || 1;
@@ -154,11 +159,21 @@ export class CanvasView {
       this.scrollContent.clientWidth,
       dpr,
     );
-    removePageOverlays(this.scrollContent, pageIdx);
+    if (context.allowStaticOverlayReuse !== true) {
+      removePageOverlays(this.scrollContent, pageIdx);
+    }
     this.scrollContent.appendChild(canvas);
 
+    let renderResult: PageRenderResult;
     try {
-      this.pageRenderer.renderPage(pageIdx, canvas, renderScale, zoom, dpr);
+      renderResult = this.pageRenderer.renderPage(
+        pageIdx,
+        canvas,
+        renderScale,
+        zoom,
+        dpr,
+        context,
+      );
     } catch (e) {
       console.error(`[CanvasView] 페이지 ${pageIdx} 렌더링 실패:`, e);
       this.releasePage(pageIdx);
@@ -173,16 +188,33 @@ export class CanvasView {
       dpr,
     );
     applyPageOverlayDisplayLayout(this.scrollContent, canvas, pageIdx);
+
+    if (renderResult.needsTextEditStaticLayerVerification) {
+      this.scheduleTextEditStaticLayerVerification(pageIdx);
+    } else if (context.reason !== 'text-edit') {
+      this.cancelTextEditStaticLayerVerification(pageIdx);
+    }
   }
 
   private refreshInvalidatedPage(payload: unknown): void {
+    if (this.pages.length === 0) return;
+
     const pageIndex =
       typeof payload === 'object' && payload !== null && 'pageIndex' in payload
-        ? (payload as { pageIndex?: unknown }).pageIndex
+        ? Number((payload as { pageIndex?: unknown }).pageIndex)
+        : Number(payload);
+    const reason =
+      typeof payload === 'object' && payload !== null && 'reason' in payload
+        ? (payload as { reason?: unknown }).reason
         : undefined;
+    const context: PageRenderContext =
+      reason === 'text-edit'
+        ? { reason: 'text-edit', allowStaticOverlayReuse: true }
+        : { reason: 'unknown', allowStaticOverlayReuse: false };
 
-    if (typeof pageIndex !== 'number' || !Number.isInteger(pageIndex) || pageIndex < 0) {
-      this.cancelPendingPageRefresh();
+    if (!Number.isInteger(pageIndex) || pageIndex < 0) {
+      this.cancelPendingTextEditRefresh();
+      this.cancelTextEditStaticLayerVerification();
       this.refreshPages();
       return;
     }
@@ -190,37 +222,86 @@ export class CanvasView {
     const pageIdx = pageIndex;
     const pageCount = this.wasm.pageCount;
     if (pageCount !== this.pages.length || pageIdx >= pageCount) {
-      this.cancelPendingPageRefresh();
+      this.cancelPendingTextEditRefresh();
+      this.cancelTextEditStaticLayerVerification();
       this.refreshPages();
       return;
     }
 
-    this.pendingPageRefreshes.add(pageIdx);
-    if (this.pageRefreshRafId !== null) return;
+    if (context.reason !== 'text-edit') {
+      this.cancelPendingTextEditRefresh(pageIdx);
+      this.cancelTextEditStaticLayerVerification(pageIdx);
+      this.refreshInvalidatedPageNow(pageIdx, context);
+      return;
+    }
 
-    this.pageRefreshRafId = window.requestAnimationFrame(() => {
-      this.pageRefreshRafId = null;
-      const pendingPages = Array.from(this.pendingPageRefreshes);
-      this.pendingPageRefreshes.clear();
+    this.cancelTextEditStaticLayerVerification(pageIdx);
+    this.pendingTextEditRefreshes.set(pageIdx, context);
+    if (this.textEditRefreshRafId !== null) return;
 
-      for (const pendingPageIdx of pendingPages) {
-        const canvas = this.canvasPool.getCanvas(pendingPageIdx);
-        if (canvas) this.renderPage(pendingPageIdx, canvas);
+    this.textEditRefreshRafId = window.requestAnimationFrame(() => {
+      this.textEditRefreshRafId = null;
+      const pendingPages = Array.from(this.pendingTextEditRefreshes.entries());
+      this.pendingTextEditRefreshes.clear();
+
+      for (const [pendingPageIdx, pendingContext] of pendingPages) {
+        this.refreshInvalidatedPageNow(pendingPageIdx, pendingContext);
       }
     });
   }
 
-  private cancelPendingPageRefresh(pageIdx?: number): void {
-    if (typeof pageIdx === 'number') {
-      this.pendingPageRefreshes.delete(pageIdx);
+  private refreshInvalidatedPageNow(pageIdx: number, context: PageRenderContext): void {
+    const pageCount = this.wasm.pageCount;
+    if (pageCount !== this.pages.length || pageIdx >= pageCount) {
+      this.refreshPages();
+      return;
+    }
+
+    const canvas = this.canvasPool.getCanvas(pageIdx);
+    if (canvas) {
+      this.renderPage(pageIdx, canvas, context);
     } else {
-      this.pendingPageRefreshes.clear();
+      this.updateVisiblePages();
     }
-    if (this.pendingPageRefreshes.size > 0) return;
-    if (this.pageRefreshRafId !== null) {
-      window.cancelAnimationFrame(this.pageRefreshRafId);
-      this.pageRefreshRafId = null;
+  }
+
+  private cancelPendingTextEditRefresh(pageIdx?: number): void {
+    if (typeof pageIdx === 'number') {
+      this.pendingTextEditRefreshes.delete(pageIdx);
+    } else {
+      this.pendingTextEditRefreshes.clear();
     }
+    if (this.pendingTextEditRefreshes.size > 0) return;
+    if (this.textEditRefreshRafId !== null) {
+      window.cancelAnimationFrame(this.textEditRefreshRafId);
+      this.textEditRefreshRafId = null;
+    }
+  }
+
+  private scheduleTextEditStaticLayerVerification(pageIdx: number): void {
+    this.cancelTextEditStaticLayerVerification(pageIdx);
+    const timer = setTimeout(() => {
+      this.textEditStaticLayerVerifyTimers.delete(pageIdx);
+      this.refreshInvalidatedPageNow(pageIdx, {
+        reason: 'unknown',
+        allowStaticOverlayReuse: false,
+      });
+    }, TEXT_EDIT_STATIC_LAYER_VERIFY_DELAY_MS);
+    this.textEditStaticLayerVerifyTimers.set(pageIdx, timer);
+  }
+
+  private cancelTextEditStaticLayerVerification(pageIdx?: number): void {
+    if (typeof pageIdx === 'number') {
+      const timer = this.textEditStaticLayerVerifyTimers.get(pageIdx);
+      if (timer) clearTimeout(timer);
+      this.textEditStaticLayerVerifyTimers.delete(pageIdx);
+      return;
+    }
+
+    for (const timer of this.textEditStaticLayerVerifyTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.textEditStaticLayerVerifyTimers.clear();
   }
 
   private repositionActivePages(): void {
@@ -314,13 +395,15 @@ export class CanvasView {
   }
 
   private releasePage(pageIdx: number): void {
-    this.cancelPendingPageRefresh(pageIdx);
+    this.cancelPendingTextEditRefresh(pageIdx);
+    this.cancelTextEditStaticLayerVerification(pageIdx);
     removePageOverlays(this.scrollContent, pageIdx);
     this.canvasPool.release(pageIdx);
   }
 
   private releaseAllPages(): void {
-    this.cancelPendingPageRefresh();
+    this.cancelPendingTextEditRefresh();
+    this.cancelTextEditStaticLayerVerification();
     removeAllPageOverlays(this.scrollContent);
     this.canvasPool.releaseAll();
   }

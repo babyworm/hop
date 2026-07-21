@@ -3,6 +3,8 @@ import { EventBus } from '@upstream/core/event-bus';
 
 const renderPageMock = vi.hoisted(() => vi.fn());
 const renderPageParentMock = vi.hoisted(() => vi.fn());
+const renderContextMock = vi.hoisted(() => vi.fn());
+const renderResultState = vi.hoisted(() => ({ needsVerification: false }));
 const viewportState = vi.hoisted(() => ({ width: 1041, height: 900 }));
 const scrollContentState = vi.hoisted(() => ({ width: 1041 }));
 const animationFrameState = vi.hoisted(() => ({
@@ -102,15 +104,33 @@ vi.mock('@upstream/view/canvas-pool', () => ({
 
 vi.mock('@upstream/view/page-renderer', () => ({
   PageRenderer: class MockPageRenderer {
-    renderPage(pageIdx: number, canvas: HTMLCanvasElement, scale: number): void {
+    renderPage(
+      pageIdx: number,
+      canvas: HTMLCanvasElement,
+      scale: number,
+      _displayScale: number,
+      _dpr: number,
+      context: { reason?: string; allowStaticOverlayReuse?: boolean } = {},
+    ): { needsTextEditStaticLayerVerification: boolean } {
       renderPageMock(pageIdx, scale);
       renderPageParentMock(Boolean(canvas.parentElement), canvas.style.left);
+      renderContextMock(context);
       canvas.width = Math.round(1000 * scale);
       canvas.height = Math.round(1400 * scale);
       const parent = canvas.parentElement as unknown as MockNode | null;
-      const overlay = createMockNode();
-      overlay.dataset = { rhwpOverlay: `front-${pageIdx}` };
-      parent?.appendChild(overlay);
+      const overlayId = `front-${pageIdx}`;
+      const reusableOverlay = context.allowStaticOverlayReuse
+        ? parent?.children.find((child) => child.dataset?.rhwpOverlay === overlayId)
+        : undefined;
+      if (!reusableOverlay) {
+        const overlay = createMockNode();
+        overlay.dataset = { rhwpOverlay: overlayId };
+        parent?.appendChild(overlay);
+      }
+      return {
+        needsTextEditStaticLayerVerification:
+          renderResultState.needsVerification && context.reason === 'text-edit',
+      };
     }
 
     renderPageFlow(pageIdx: number, canvas: HTMLCanvasElement, scale: number): void {
@@ -256,6 +276,44 @@ function createMockCanvas(): HTMLCanvasElement {
   } as HTMLCanvasElement;
 }
 
+function createWasmStub() {
+  return {
+    pageCount: 1,
+    getPageInfo: () => ({
+      pageIndex: 0,
+      width: 1000,
+      height: 1400,
+      sectionIndex: 0,
+      marginLeft: 0,
+      marginRight: 0,
+      marginTop: 0,
+      marginBottom: 0,
+      marginHeader: 0,
+      marginFooter: 0,
+    }),
+  };
+}
+
+function createCanvasViewHarness() {
+  const container = createMockNode();
+  const scrollContent = createMockNode('scroll-content');
+  container.clientWidth = 1041;
+  scrollContent.clientWidth = scrollContentState.width;
+  container.appendChild(scrollContent);
+  const wasm = createWasmStub();
+  const eventBus = new EventBus();
+  const view = new CanvasView(container as unknown as HTMLElement, wasm as never, eventBus);
+  return { container, scrollContent, wasm, eventBus, view };
+}
+
+function flushNextAnimationFrame(): void {
+  const next = animationFrameState.callbacks.entries().next().value;
+  if (!next) throw new Error('Expected a queued animation frame');
+  const [id, callback] = next;
+  animationFrameState.callbacks.delete(id);
+  callback(0);
+}
+
 describe('applyCanvasDisplayLayout', () => {
   it('centers and sizes an already-rendered canvas in single-column mode', () => {
     const canvas = createMockCanvas();
@@ -293,10 +351,12 @@ describe('inferCanvasDevicePixelRatio', () => {
   });
 });
 
-describe('CanvasView viewport resize behavior', () => {
+describe('CanvasView behavior', () => {
   beforeEach(() => {
     renderPageMock.mockReset();
     renderPageParentMock.mockReset();
+    renderContextMock.mockReset();
+    renderResultState.needsVerification = false;
     viewportState.width = 1041;
     viewportState.height = 900;
     scrollContentState.width = 1041;
@@ -317,34 +377,11 @@ describe('CanvasView viewport resize behavior', () => {
   });
 
   it('repositions active canvases on single-column resize without rerendering them', () => {
-    const container = createMockNode();
-    const scrollContent = createMockNode('scroll-content');
-    container.clientWidth = 1041;
-    scrollContent.clientWidth = scrollContentState.width;
+    const { scrollContent, eventBus, view } = createCanvasViewHarness();
     Object.defineProperty(scrollContent, 'clientWidth', {
       configurable: true,
       get: () => scrollContentState.width,
     });
-    container.appendChild(scrollContent);
-
-    const wasm = {
-      pageCount: 1,
-      getPageInfo: () => ({
-        pageIndex: 0,
-        width: 1000,
-        height: 1400,
-        sectionIndex: 0,
-        marginLeft: 0,
-        marginRight: 0,
-        marginTop: 0,
-        marginBottom: 0,
-        marginHeader: 0,
-        marginFooter: 0,
-      }),
-    };
-
-    const eventBus = new EventBus();
-    const view = new CanvasView(container as unknown as HTMLElement, wasm as never, eventBus);
 
     view.loadDocument();
 
@@ -372,30 +409,7 @@ describe('CanvasView viewport resize behavior', () => {
   });
 
   it('refreshes pages when upstream view state changes', () => {
-    const container = createMockNode();
-    const scrollContent = createMockNode('scroll-content');
-    container.clientWidth = 1041;
-    scrollContent.clientWidth = scrollContentState.width;
-    container.appendChild(scrollContent);
-
-    const wasm = {
-      pageCount: 1,
-      getPageInfo: () => ({
-        pageIndex: 0,
-        width: 1000,
-        height: 1400,
-        sectionIndex: 0,
-        marginLeft: 0,
-        marginRight: 0,
-        marginTop: 0,
-        marginBottom: 0,
-        marginHeader: 0,
-        marginFooter: 0,
-      }),
-    };
-
-    const eventBus = new EventBus();
-    const view = new CanvasView(container as unknown as HTMLElement, wasm as never, eventBus);
+    const { scrollContent, eventBus, view } = createCanvasViewHarness();
 
     view.loadDocument();
     expect(renderPageMock).toHaveBeenCalledTimes(1);
@@ -409,33 +423,11 @@ describe('CanvasView viewport resize behavior', () => {
   });
 
   it('coalesces upstream page invalidations and redraws the active table page', () => {
-    const container = createMockNode();
-    const scrollContent = createMockNode('scroll-content');
-    container.clientWidth = 1041;
-    scrollContent.clientWidth = scrollContentState.width;
-    container.appendChild(scrollContent);
-
-    const wasm = {
-      pageCount: 1,
-      getPageInfo: () => ({
-        pageIndex: 0,
-        width: 1000,
-        height: 1400,
-        sectionIndex: 0,
-        marginLeft: 0,
-        marginRight: 0,
-        marginTop: 0,
-        marginBottom: 0,
-        marginHeader: 0,
-        marginFooter: 0,
-      }),
-    };
-
-    const eventBus = new EventBus();
-    const view = new CanvasView(container as unknown as HTMLElement, wasm as never, eventBus);
+    const { scrollContent, eventBus, view } = createCanvasViewHarness();
 
     view.loadDocument();
     const canvas = scrollContent.querySelector('canvas');
+    const overlay = scrollContent.querySelectorAll('[data-rhwp-overlay]')[0];
     expect(renderPageMock).toHaveBeenCalledTimes(1);
 
     eventBus.emit('document-page-invalidated', { pageIndex: 0, reason: 'text-edit' });
@@ -444,16 +436,109 @@ describe('CanvasView viewport resize behavior', () => {
     expect(renderPageMock).toHaveBeenCalledTimes(1);
     expect(animationFrameState.callbacks).toHaveLength(1);
 
-    const callback = animationFrameState.callbacks.values().next().value;
-    expect(callback).toBeTypeOf('function');
-    animationFrameState.callbacks.clear();
-    callback?.(0);
+    flushNextAnimationFrame();
 
     expect(renderPageMock).toHaveBeenCalledTimes(2);
+    expect(renderContextMock).toHaveBeenLastCalledWith({
+      reason: 'text-edit',
+      allowStaticOverlayReuse: true,
+    });
     expect(scrollContent.querySelector('canvas')).toBe(canvas);
     expect(scrollContent.querySelectorAll('canvas')).toHaveLength(1);
+    expect(scrollContent.querySelectorAll('[data-rhwp-overlay]')[0]).toBe(overlay);
     expect(scrollContent.querySelectorAll('[data-rhwp-overlay]')).toHaveLength(1);
 
     view.dispose();
+  });
+
+  it('cancels a queued page refresh when a full document refresh supersedes it', () => {
+    const { eventBus, view } = createCanvasViewHarness();
+    view.loadDocument();
+
+    eventBus.emit('document-page-invalidated', { pageIndex: 0, reason: 'text-edit' });
+    expect(animationFrameState.callbacks).toHaveLength(1);
+
+    eventBus.emit('document-changed');
+
+    expect(animationFrameState.callbacks).toHaveLength(0);
+    expect(renderPageMock).toHaveBeenCalledTimes(2);
+    view.dispose();
+  });
+
+  it('cancels a queued page refresh when the view is disposed', () => {
+    const { eventBus, view } = createCanvasViewHarness();
+    view.loadDocument();
+
+    eventBus.emit('document-page-invalidated', { pageIndex: 0, reason: 'text-edit' });
+    expect(animationFrameState.callbacks).toHaveLength(1);
+
+    view.dispose();
+
+    expect(animationFrameState.callbacks).toHaveLength(0);
+    expect(renderPageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to a full refresh for an invalid page invalidation payload', () => {
+    const { eventBus, view } = createCanvasViewHarness();
+    view.loadDocument();
+
+    eventBus.emit('document-page-invalidated', { pageIndex: 'invalid', reason: 'text-edit' });
+
+    expect(animationFrameState.callbacks).toHaveLength(0);
+    expect(renderPageMock).toHaveBeenCalledTimes(2);
+    expect(renderContextMock).toHaveBeenLastCalledWith({});
+    view.dispose();
+  });
+
+  it('verifies reused static layers after the optimized text-edit render', () => {
+    vi.useFakeTimers();
+    try {
+      renderResultState.needsVerification = true;
+      const { eventBus, view } = createCanvasViewHarness();
+      view.loadDocument();
+
+      eventBus.emit('document-page-invalidated', { pageIndex: 0, reason: 'text-edit' });
+      flushNextAnimationFrame();
+
+      expect(renderContextMock).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(800);
+
+      expect(renderContextMock).toHaveBeenCalledTimes(3);
+      expect(renderContextMock).toHaveBeenLastCalledWith({
+        reason: 'unknown',
+        allowStaticOverlayReuse: false,
+      });
+      view.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels static-layer verification when a full refresh supersedes it', () => {
+    vi.useFakeTimers();
+    try {
+      renderResultState.needsVerification = true;
+      const { eventBus, view } = createCanvasViewHarness();
+      view.loadDocument();
+
+      eventBus.emit('document-page-invalidated', { pageIndex: 0, reason: 'text-edit' });
+      flushNextAnimationFrame();
+      const verificationTimers = (
+        view as unknown as {
+          textEditStaticLayerVerifyTimers: Map<number, ReturnType<typeof setTimeout>>;
+        }
+      ).textEditStaticLayerVerifyTimers;
+      expect(verificationTimers.size).toBe(1);
+
+      eventBus.emit('document-changed');
+      expect(verificationTimers.size).toBe(0);
+
+      vi.advanceTimersByTime(800);
+      expect(renderContextMock).toHaveBeenCalledTimes(3);
+      expect(renderContextMock).toHaveBeenLastCalledWith({});
+      view.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

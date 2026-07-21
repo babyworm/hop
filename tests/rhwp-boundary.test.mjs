@@ -86,6 +86,38 @@ test('studio host declares compatibility required by imported upstream source', 
   assert.equal(tsconfig.compilerOptions.allowImportingTsExtensions, true);
 });
 
+test('HOP canvas fork consumes the upstream page-local text edit contract', async () => {
+  const upstreamInputHandler = await readFile(
+    join(upstreamStudioRoot, 'engine/input-handler.ts'),
+    'utf8',
+  );
+  const upstreamCanvasView = await readFile(
+    join(upstreamStudioRoot, 'view/canvas-view.ts'),
+    'utf8',
+  );
+  const hopCanvasView = await readFile(join(studioRoot, 'view/canvas-view.ts'), 'utf8');
+  const verificationDelayPattern = /const TEXT_EDIT_STATIC_LAYER_VERIFY_DELAY_MS = (\d+);/;
+
+  assert.match(
+    upstreamInputHandler,
+    /emit\('document-page-invalidated',\s*\{\s*pageIndex,\s*reason:\s*'text-edit'\s*\}\)/,
+  );
+  assert.match(
+    hopCanvasView,
+    /on\('document-page-invalidated',\s*\(payload\)\s*=>\s*this\.refreshInvalidatedPage\(payload\)\)/,
+  );
+  assert.match(
+    hopCanvasView,
+    /reason === 'text-edit'[\s\S]*?\{ reason: 'text-edit', allowStaticOverlayReuse: true \}/,
+  );
+  assert.match(upstreamCanvasView, verificationDelayPattern);
+  assert.match(hopCanvasView, verificationDelayPattern);
+  assert.equal(
+    upstreamCanvasView.match(verificationDelayPattern)?.[1],
+    hopCanvasView.match(verificationDelayPattern)?.[1],
+  );
+});
+
 async function typescriptFiles(directory) {
   const results = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
