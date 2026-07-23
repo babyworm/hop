@@ -31,6 +31,7 @@ export const vendoredArtifactNames = [
 ];
 export const studioMirroredAssetPaths = ['public/images/icon_small_ko_dark.svg'];
 export const studioPrivateInputIds = [
+  'engine/command',
   'engine/cursor',
   'engine/history',
   'engine/input-handler',

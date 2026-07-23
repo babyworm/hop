@@ -112,7 +112,11 @@ export class HanjaContextMenu extends ContextMenu {
     item.addEventListener('click', (event) => {
       event.stopPropagation();
       if (!this.hopDispatcher.isEnabled(CONVERT_HANJA_COMMAND)) return;
-      this.hopDispatcher.dispatch(CONVERT_HANJA_COMMAND);
+      this.hopDispatcher.dispatch(CONVERT_HANJA_COMMAND, {
+        anchorEl: item,
+        direction,
+        focusOwnerAfterDispatch: 'body',
+      });
       this.hide();
     });
     return item;

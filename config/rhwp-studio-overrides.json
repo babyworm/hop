@@ -19,6 +19,7 @@
       "view/ruler": "43e4284348662ba6164771c3597a33a619f18a85471b677886c55284bca70dbb"
     },
     "privateInputs": {
+      "engine/command": "eed56c6feb5d839bbcc38f43c7d6a5f4da08b00267a29caa012c25878794c82d",
       "engine/cursor": "b13155d6be476e170a3c38bde86a5bd1474a99c0911a509c444739fb0422f399",
       "engine/history": "140084745f4556eb9c1bdf2d6c5d67a1062cd4ee6eecebd1c37a33581c7892f4",
       "engine/input-handler": "708df121ef0e157e96472421b5250a126757b75b8e52a47ecb8bd4c15d8dc1fe",

@@ -109,6 +109,11 @@ describe('TauriBridge', () => {
 
   it('advances generation before native open bookkeeping finishes', async () => {
     const bridge = new TauriBridge();
+    const inputLease = { active: true };
+    const getCommandInput = () => inputLease.active ? inputLease : null;
+    bridge.setBeforeDocumentReplacement(() => {
+      inputLease.active = false;
+    });
     let releaseFinderRecent: () => void = () => undefined;
     const finderRecentPending = new Promise<void>((resolve) => {
       releaseFinderRecent = resolve;
@@ -134,11 +139,15 @@ describe('TauriBridge', () => {
     await vi.waitFor(() => expect(getWasmMock(bridge, 'loadDocumentMock')).toHaveBeenCalledOnce());
 
     expect(currentDocumentGeneration()).toBe(before + 1);
+    expect(inputLease.active).toBe(false);
+    expect(getCommandInput()).toBeNull();
     expect(openingFinished).toBe(false);
     expect(invokeMock).not.toHaveBeenCalledWith('record_recent_document', expect.anything());
 
     releaseFinderRecent();
     await opening;
+    expect(inputLease.active).toBe(false);
+    expect(getCommandInput()).toBeNull();
   });
 
   it('reads large documents in multiple fs chunks before handing them to wasm', async () => {
@@ -260,6 +269,11 @@ describe('TauriBridge', () => {
 
   it('advances generation before replaced native document cleanup finishes', async () => {
     const bridge = new TauriBridge();
+    const inputLease = { active: true };
+    const getCommandInput = () => inputLease.active ? inputLease : null;
+    bridge.setBeforeDocumentReplacement(() => {
+      inputLease.active = false;
+    });
     let releaseClose: () => void = () => undefined;
     const closePending = new Promise<void>((resolve) => {
       releaseClose = resolve;
@@ -283,10 +297,14 @@ describe('TauriBridge', () => {
     await vi.waitFor(() => expect(getWasmMock(bridge, 'createNewDocumentMock')).toHaveBeenCalledOnce());
 
     expect(currentDocumentGeneration()).toBe(before + 1);
+    expect(inputLease.active).toBe(false);
+    expect(getCommandInput()).toBeNull();
     expect(creatingFinished).toBe(false);
 
     releaseClose();
     await creating;
+    expect(inputLease.active).toBe(false);
+    expect(getCommandInput()).toBeNull();
   });
 
   it('resets source format to hwp after creating a native blank document', async () => {

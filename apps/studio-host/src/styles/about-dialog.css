@@ -4,3 +4,48 @@
   margin-top: -8px;
   margin-bottom: 12px;
 }
+
+.about-hanja-notices {
+  margin: 0 0 16px;
+  text-align: left;
+}
+
+.about-hanja-notices summary {
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: bold;
+}
+
+.about-hanja-notices-content {
+  max-height: 240px;
+  margin: 8px 0 0;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (min-width: 768px) {
+  .hop-about-dialog {
+    display: flex;
+    max-height: calc(100dvh - 32px);
+    flex-direction: column;
+  }
+
+  .hop-about-dialog .dialog-title,
+  .hop-about-dialog .dialog-footer {
+    flex: 0 0 auto;
+  }
+
+  .hop-about-dialog .about-body {
+    min-height: 0;
+    overflow-y: auto;
+  }
+}

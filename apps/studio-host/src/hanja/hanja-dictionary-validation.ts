@@ -27,6 +27,7 @@ const MAX_FILE_NAME_LENGTH = 128;
 const MAX_SHARD_NAME_LENGTH = 16;
 const MAX_VISIBLE_STRING_LENGTH = 1_024;
 const localJsonFilePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/u;
+const localMarkdownFilePattern = /^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/u;
 const hangulPattern = /^[가-힣]+$/u;
 const hangulSyllablePattern = /^[가-힣]$/u;
 const singleHanPattern = /^\p{Script=Han}$/u;
@@ -92,6 +93,7 @@ function isHanjaManifest(value: unknown): value is HanjaManifest {
   return isRecord(value) && value.schemaVersion === 1 &&
     isRecord(value.characterDatabase) && isLocalJsonFile(value.characterDatabase.file) &&
     isRecord(value.readingIndex) && isLocalJsonFile(value.readingIndex.file) &&
+    isRecord(value.notices) && isLocalMarkdownFile(value.notices.file) &&
     isRecord(value.wordDatabase) && hasCanonicalInitialShards(value.wordDatabase.initialShards) &&
     hasUniqueDescriptors(value.wordDatabase.files);
 }
@@ -213,6 +215,11 @@ function isBoundedStringArray(
 function isLocalJsonFile(value: unknown): value is string {
   return typeof value === 'string' && hasAtMostCodePoints(value, MAX_FILE_NAME_LENGTH) &&
     localJsonFilePattern.test(value);
+}
+
+function isLocalMarkdownFile(value: unknown): value is string {
+  return typeof value === 'string' && hasAtMostCodePoints(value, MAX_FILE_NAME_LENGTH) &&
+    localMarkdownFilePattern.test(value);
 }
 
 function isOptionalBoolean(value: unknown): value is boolean | undefined {

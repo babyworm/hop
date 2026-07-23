@@ -5,6 +5,7 @@ const manifest = {
   schemaVersion: 1,
   characterDatabase: { file: 'characters.json' },
   readingIndex: { file: 'readings.json' },
+  notices: { file: 'THIRD_PARTY_NOTICES.md' },
   wordDatabase: {
     initialShards: [
       'g', 'gg', 'n', 'd', 'dd', 'r', 'm', 'b', 'bb', 's',

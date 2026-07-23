@@ -8,7 +8,7 @@ import { parseLibhangul } from '../scripts/lib/hanja-source-parsers.mjs';
 import { downloadSource, repoRoot, sha256 } from '../scripts/lib/hanja-database.mjs';
 import { extractStdictSupplement, stdictSnapshot } from '../scripts/lib/stdict-supplement.mjs';
 import { readZipEntries } from '../scripts/lib/zip-reader.mjs';
-import { verifyHanjaDatabase } from '../scripts/verify-hanja-database.mjs';
+import * as hanjaVerifier from '../scripts/verify-hanja-database.mjs';
 
 test('libhangul word parsing rejects malformed and non-aligned conversion pairs', () => {
   const { words } = parseLibhangul(Buffer.from([
@@ -24,7 +24,64 @@ test('libhangul word parsing rejects malformed and non-aligned conversion pairs'
 });
 
 test('generated Hanja databases preserve their source and lookup contracts', async () => {
-  await verifyHanjaDatabase();
+  await hanjaVerifier.verifyHanjaDatabase();
+});
+
+test('Hanja verification rejects a missing third-party notice', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'hop-hanja-notice-missing-'));
+  try {
+    await assert.rejects(
+      hanjaVerifier.verifyHanjaNotices(noticeManifest(Buffer.from('reviewed')), directory),
+      /ENOENT|no such file/iu,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('Hanja verification rejects a corrupted third-party notice', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'hop-hanja-notice-corrupt-'));
+  try {
+    const reviewed = Buffer.from('reviewed');
+    await writeFile(join(directory, 'THIRD_PARTY_NOTICES.md'), 'tampered');
+
+    await assert.rejects(
+      hanjaVerifier.verifyHanjaNotices(noticeManifest(reviewed), directory),
+      /hash|sha|digest/iu,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('Hanja verification rejects malformed UTF-8 in the third-party notice', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'hop-hanja-notice-utf8-'));
+  try {
+    const malformed = Buffer.from([0xc3, 0x28]);
+    await writeFile(join(directory, 'THIRD_PARTY_NOTICES.md'), malformed);
+
+    await assert.rejects(
+      hanjaVerifier.verifyHanjaNotices(noticeManifest(malformed), directory),
+      /UTF-?8|encoding/iu,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('Hanja verification rejects an oversized third-party notice before reading it', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'hop-hanja-notice-size-'));
+  try {
+    const oversized = Buffer.alloc(8 * 1024 * 1024 + 1);
+    await writeFile(join(directory, 'THIRD_PARTY_NOTICES.md'), oversized);
+
+    await assert.rejects(
+      hanjaVerifier.verifyHanjaNotices(noticeManifest(oversized), directory),
+      /size|exceed|large/iu,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test('hashed Hanja JSON assets keep LF bytes on every Git checkout', () => {
@@ -128,4 +185,14 @@ function storedZip(name, content) {
   eocd.writeUInt32LE(central.length, 12);
   eocd.writeUInt32LE(local.length, 16);
   return Buffer.concat([local, central, eocd]);
+}
+
+function noticeManifest(content) {
+  return {
+    notices: {
+      file: 'THIRD_PARTY_NOTICES.md',
+      bytes: content.length,
+      sha256: sha256(content),
+    },
+  };
 }

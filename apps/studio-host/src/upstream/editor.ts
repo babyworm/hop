@@ -5,9 +5,7 @@ export { CellSelectionRenderer } from '@upstream/engine/cell-selection-renderer'
 export { TableObjectRenderer } from '@upstream/engine/table-object-renderer';
 export { TableResizeRenderer } from '@upstream/engine/table-resize-renderer';
 export {
-  DeleteTextCommand,
   IMMEDIATE_TEXT_MUTATION_EFFECTS,
-  InsertTextCommand,
   NO_TEXT_MUTATION_EFFECTS,
 } from '@upstream/engine/command';
 export type { EditCommand, TextMutationEffects } from '@upstream/engine/command';
@@ -92,7 +90,7 @@ function wrapRecoveredHistoryMethod(
   const guarded = (...args: unknown[]) => {
     const sourceStack = historyStack(history, sourceField);
     const sourceLength = sourceStack.length;
-    const command = sourceStack.at(-1);
+    const command = sourceStack[sourceLength - 1];
     try {
       return Reflect.apply(original, history, args);
     } catch (error) {

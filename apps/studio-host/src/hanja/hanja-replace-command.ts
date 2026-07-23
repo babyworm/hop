@@ -140,16 +140,21 @@ function applyTransitionOnce(
   position: DocumentPosition,
   transition: TextStyleTransition,
 ): TextMutationEffects {
-  const sourceParagraphLength = getHanjaParagraphLength(wasm, position);
-  if (!transitionStateMatches(
-    wasm,
-    position,
-    transition,
-    sourceParagraphLength,
-    'source',
-    transition.sourceRuns,
-  )) {
-    throw new Error('변환할 원문 상태가 예상과 다릅니다.');
+  let sourceParagraphLength: number;
+  try {
+    sourceParagraphLength = getHanjaParagraphLength(wasm, position);
+    if (!transitionStateMatches(
+      wasm,
+      position,
+      transition,
+      sourceParagraphLength,
+      'source',
+      transition.sourceRuns,
+    )) {
+      throw new Error('변환할 원문 상태가 예상과 다릅니다.');
+    }
+  } catch (error) {
+    throw new RecoveredTransitionError(error);
   }
   try {
     insertHanjaTextImmediate(

@@ -97,6 +97,9 @@ export class HanjaDictionary {
     return { kind: 'hangul', source, characters: units };
   }
 
+  loadNotices(): Promise<string> {
+    return this.assets.loadNotices();
+  }
 }
 
 export function createBundledHanjaDictionary(): HanjaDictionary {
@@ -105,6 +108,10 @@ export function createBundledHanjaDictionary(): HanjaDictionary {
     globalThis.fetch.bind(globalThis),
     dictionaryTrust.manifestSha256,
   );
+}
+
+export function loadBundledHanjaNotices(): Promise<string> {
+  return createBundledHanjaDictionary().loadNotices();
 }
 
 function wordShardFor(word: string, initialShards: readonly string[]): string {
@@ -161,7 +168,7 @@ function buildReadingCandidate(
 ): HanjaCharacterCandidate {
   const meanings = [...new Set(record.labels.flatMap((label) => {
     const words = label.split(/\s+/u);
-    return words.at(-1) === reading ? [words.slice(0, -1).join(' ')] : [];
+    return words[words.length - 1] === reading ? [words.slice(0, -1).join(' ')] : [];
   }).filter(Boolean))];
   const fallback = detailFromRecord(character, reading, record);
   const meaning = meanings.length > 0 ? meanings.join(' · ') : fallback.meaning;
@@ -180,13 +187,16 @@ function detailFromRecord(
   preferredReading: string,
   record: HanjaCharacterRecord,
 ): HanjaGlyphDetail {
-  const matchingLabel = record.labels.find((label) => label.split(/\s+/u).at(-1) === preferredReading);
+  const matchingLabel = record.labels.find((label) => {
+    const words = label.split(/\s+/u);
+    return words[words.length - 1] === preferredReading;
+  });
   if (matchingLabel) {
     const words = matchingLabel.split(/\s+/u);
     return {
       character,
       label: matchingLabel,
-      reading: words.at(-1) ?? preferredReading,
+      reading: words[words.length - 1] ?? preferredReading,
       meaning: words.slice(0, -1).join(' '),
     };
   }

@@ -54,6 +54,10 @@ let inputHandler: InputHandler | null = null;
 let toolbar: Toolbar | null = null;
 let ruler: Ruler | null = null;
 let homeScreen: HomeScreen | null = null;
+wasm.setBeforeDocumentReplacement(() => {
+  inputHandler?.deactivate();
+  toolbar?.setEnabled(false);
+});
 
 // 상태 바 요소
 const sbMessage = () => document.getElementById('sb-message')!;
@@ -66,7 +70,7 @@ const commandRuntime = createCommandRuntime({
   wasm,
   eventBus,
   documentState,
-  getInputHandler: () => inputHandler,
+  getInputHandler: () => inputHandler?.isActive() ? inputHandler : null,
   getCanvasView: () => canvasView,
   setStatusMessage: (message) => { sbMessage().textContent = message; },
 });

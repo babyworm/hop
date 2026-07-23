@@ -162,6 +162,78 @@ describe('HanjaReplaceCommand', () => {
     expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
   });
 
+  it.each([
+    ['undo', 'A학교B'],
+    ['redo', 'A學校B'],
+  ] as const)('keeps %s retryable when source-state preflight fails before mutation', (
+    operation,
+    expectedAfterRetry,
+  ) => {
+    const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
+    const history = new CommandHistory();
+    installRecoveredCommandHistoryGuard({ history } as never);
+    history.execute(
+      new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校'),
+      wasm as never,
+    );
+    if (operation === 'redo') history.undo(wasm as never);
+    const stateBeforeAttempt = wasm.state();
+    const getParagraphLength = vi.spyOn(wasm, 'getParagraphLength')
+      .mockImplementationOnce(() => {
+        throw new Error('injected preflight read failure');
+      });
+
+    expect(() => history[operation](wasm as never)).toThrow('injected preflight read failure');
+    expect(wasm.state()).toEqual(stateBeforeAttempt);
+    expect(history.canUndo()).toBe(operation === 'undo');
+    expect(history.canRedo()).toBe(operation === 'redo');
+
+    getParagraphLength.mockRestore();
+    expect(history[operation](wasm as never)).toMatchObject({ charOffset: 3 });
+    expect(wasm.state()).toEqual({
+      text: expectedAfterRetry,
+      shapes: [0, 7, 8, 0],
+    });
+  });
+
+  it.each([
+    ['undo', '文', '學', 'A文校B', 'A학교B'],
+    ['redo', '문', '학', 'A문교B', 'A學校B'],
+  ] as const)('keeps %s retryable when source text mismatches before mutation', (
+    operation,
+    mismatchedCharacter,
+    sourceCharacter,
+    expectedMismatchedText,
+    expectedAfterRetry,
+  ) => {
+    const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
+    const history = new CommandHistory();
+    installRecoveredCommandHistoryGuard({ history } as never);
+    history.execute(
+      new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校'),
+      wasm as never,
+    );
+    if (operation === 'redo') history.undo(wasm as never);
+    wasm.deleteText(0, 0, 1, 1);
+    wasm.insertText(0, 0, 1, mismatchedCharacter);
+    const mismatchedState = wasm.state();
+
+    expect(() => history[operation](wasm as never)).toThrow('변환할 원문 상태가 예상과 다릅니다.');
+    expect(wasm.state()).toEqual(mismatchedState);
+    expect(wasm.state().text).toBe(expectedMismatchedText);
+    expect(history.canUndo()).toBe(operation === 'undo');
+    expect(history.canRedo()).toBe(operation === 'redo');
+
+    wasm.deleteText(0, 0, 1, 1);
+    wasm.insertText(0, 0, 1, sourceCharacter);
+    wasm.setCharShapeId(0, 0, 1, 2, 7);
+    expect(history[operation](wasm as never)).toMatchObject({ charOffset: 3 });
+    expect(wasm.state()).toEqual({
+      text: expectedAfterRetry,
+      shapes: [0, 7, 8, 0],
+    });
+  });
+
   it('keeps a fully recovered command in history after repeated undo and redo failures', () => {
     const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
     const history = new CommandHistory();

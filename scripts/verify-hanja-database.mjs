@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -15,6 +15,7 @@ import { stdictSnapshot } from './lib/stdict-supplement.mjs';
 const containsHanPattern = /\p{Script=Han}/u;
 const singleHanPattern = /^\p{Script=Han}$/u;
 const safeOriginPattern = /^[\p{Script=Han}가-힣A-Za-z0-9·ㆍ-]+$/u;
+const MAX_NOTICE_BYTES = 8 * 1024 * 1024;
 
 export async function verifyHanjaDatabase() {
   const manifestContent = await readFile(join(outputDir, 'manifest.json'));
@@ -31,7 +32,7 @@ export async function verifyHanjaDatabase() {
   assert.equal(manifest.characterDatabase.license, 'BSD-3-Clause AND Unicode-3.0');
   assert.equal(manifest.readingIndex.license, 'BSD-3-Clause AND Unicode-3.0');
   assert.equal(manifest.wordDatabase.license, 'CC-BY-SA-2.0-KR');
-  assert.equal(manifest.notices, 'THIRD_PARTY_NOTICES.md');
+  await verifyHanjaNotices(manifest);
   assert.deepEqual(manifest.wordDatabase.sourceBits, { libhangul: 1, krdict: 2, stdict: 4 });
   assert.deepEqual(manifest.wordDatabase.initialShards, shardNames.slice(0, 19));
   assert.deepEqual(manifest.wordDatabase.files.map((file) => file.shard), shardNames);
@@ -86,6 +87,21 @@ export async function verifyHanjaDatabase() {
   assert.ok(candidateCount > 335_000);
   verifyFixtures(characters, readings, fixtures);
   return manifest;
+}
+
+export async function verifyHanjaNotices(manifest, databaseDir = outputDir) {
+  assert.equal(manifest.notices.file, 'THIRD_PARTY_NOTICES.md');
+  const path = join(databaseDir, manifest.notices.file);
+  const metadata = await stat(path);
+  assert.ok(metadata.size <= MAX_NOTICE_BYTES, 'third-party notice size exceeds 8 MiB');
+  const content = await readFile(path);
+  assert.equal(content.length, manifest.notices.bytes, 'third-party notice byte count mismatch');
+  assert.equal(sha256(content), manifest.notices.sha256, 'third-party notice hash mismatch');
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(content);
+  assert.match(
+    text,
+    /^UNICODE LICENSE V3 COPYRIGHT AND PERMISSION NOTICE$/mu,
+  );
 }
 
 function verifyReadings(readings, characters) {

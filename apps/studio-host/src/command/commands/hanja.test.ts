@@ -83,6 +83,50 @@ describe('Hanja command', () => {
     expect(focus).toHaveBeenCalledOnce();
   });
 
+  it.each(['main menu', 'context menu', 'command palette'])(
+    'restores editor focus after successful conversion from the %s',
+    async (entryPoint) => {
+      const status = { textContent: '' };
+      const body = new EventTarget();
+      const anchorEl = new EventTarget();
+      const focus = vi.fn();
+      const inputHandler = editableInputHandler(focus);
+      const documentStub = {
+        activeElement: entryPoint === 'command palette' ? body : anchorEl,
+        body,
+        getElementById: () => status,
+      };
+      vi.stubGlobal('document', documentStub);
+      commandMocks.readSource.mockReturnValue({ text: '학', direction: 'hangul-to-hanja' });
+      commandMocks.lookup.mockResolvedValue({ kind: 'word', source: '학', candidates: [] });
+      commandMocks.sourceCurrent.mockReturnValue(true);
+      commandMocks.openDialog.mockImplementation(async () => {
+        documentStub.activeElement = new EventTarget();
+        return '學';
+      });
+
+      const params = entryPoint === 'command palette'
+        ? undefined
+        : {
+          anchorEl,
+          ...(entryPoint === 'context menu' ? { focusOwnerAfterDispatch: 'body' } : {}),
+        };
+      hanjaCommands[0]!.execute({
+        getContext: () => editableContext(),
+        getInputHandler: () => inputHandler,
+      } as never, params);
+      if (entryPoint === 'context menu') documentStub.activeElement = body;
+
+      await vi.waitFor(() => {
+        expect(commandMocks.replaceSource).toHaveBeenCalledWith(inputHandler, {
+          text: '학',
+          direction: 'hangul-to-hanja',
+        }, '學');
+      });
+      expect(focus).toHaveBeenCalledOnce();
+    },
+  );
+
   it('does not run reverse lookup when the forward F9 command is used on Hanja', async () => {
     const status = { textContent: '' };
     vi.stubGlobal('document', { getElementById: () => status });
@@ -103,6 +147,7 @@ describe('Hanja command', () => {
   it('rechecks editable context after the dialog resolves', async () => {
     const status = { textContent: '' };
     let context = editableContext();
+    const inputHandler = editableInputHandler();
     vi.stubGlobal('document', { getElementById: () => status });
     commandMocks.readSource.mockReturnValue({ text: '학' });
     commandMocks.lookup.mockResolvedValue({ kind: 'word', source: '학', candidates: [] });
@@ -114,7 +159,7 @@ describe('Hanja command', () => {
 
     hanjaCommands[0]!.execute({
       getContext: () => context,
-      getInputHandler: () => editableInputHandler(),
+      getInputHandler: () => inputHandler,
     } as never);
 
     await vi.waitFor(() => {
@@ -126,6 +171,7 @@ describe('Hanja command', () => {
   it('does not open the dialog when context changes while dictionary lookup is pending', async () => {
     const status = { textContent: '' };
     let context = editableContext();
+    const inputHandler = editableInputHandler();
     let resolveLookup = (_value: unknown): void => {};
     const lookupPending = new Promise<unknown>((resolve) => {
       resolveLookup = (value) => resolve(value);
@@ -137,7 +183,7 @@ describe('Hanja command', () => {
 
     hanjaCommands[0]!.execute({
       getContext: () => context,
-      getInputHandler: () => editableInputHandler(),
+      getInputHandler: () => inputHandler,
     } as never);
     context = { ...context, isFormMode: true };
     resolveLookup({ kind: 'word', source: '학', candidates: [] });
@@ -147,6 +193,79 @@ describe('Hanja command', () => {
     });
     expect(commandMocks.openDialog).not.toHaveBeenCalled();
     expect(commandMocks.replaceSource).not.toHaveBeenCalled();
+  });
+
+  it('does not convert or refocus when DOM focus leaves the editor during dictionary lookup', async () => {
+    const status = { textContent: '' };
+    const focus = vi.fn();
+    const inputHandler = editableInputHandler(focus);
+    const documentStub = {
+      activeElement: inputHandler.textarea,
+      body: new EventTarget(),
+      getElementById: () => status,
+    };
+    let resolveLookup = (_value: unknown): void => {};
+    const lookupPending = new Promise<unknown>((resolve) => {
+      resolveLookup = (value) => resolve(value);
+    });
+    vi.stubGlobal('document', documentStub);
+    commandMocks.readSource.mockReturnValue({ text: '학' });
+    commandMocks.lookup.mockReturnValue(lookupPending);
+    commandMocks.sourceCurrent.mockReturnValue(true);
+    commandMocks.openDialog.mockResolvedValue('學');
+    commandMocks.replaceSource.mockReturnValue(true);
+
+    hanjaCommands[0]!.execute({
+      getContext: () => editableContext(),
+      getInputHandler: () => inputHandler,
+    } as never);
+    await vi.waitFor(() => {
+      expect(commandMocks.lookup).toHaveBeenCalledWith('학');
+    });
+    documentStub.activeElement = new EventTarget();
+    resolveLookup({ kind: 'word', source: '학', candidates: [] });
+
+    await vi.waitFor(() => {
+      expect(status.textContent).toBe('편집 위치가 바뀌어 한자 변환을 취소했습니다.');
+    });
+    expect(inputHandler.isActive()).toBe(true);
+    expect(commandMocks.openDialog).not.toHaveBeenCalled();
+    expect(commandMocks.replaceSource).not.toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it('does not open or refocus when the input handler changes during dictionary lookup', async () => {
+    const status = { textContent: '' };
+    const originalInputHandler = editableInputHandler();
+    const replacementInputHandler = editableInputHandler();
+    let currentInputHandler = originalInputHandler;
+    let resolveLookup = (_value: unknown): void => {};
+    const lookupPending = new Promise<unknown>((resolve) => {
+      resolveLookup = (value) => resolve(value);
+    });
+    vi.stubGlobal('document', { getElementById: () => status });
+    commandMocks.readSource.mockReturnValue({ text: '학' });
+    commandMocks.lookup.mockReturnValue(lookupPending);
+    commandMocks.sourceCurrent.mockReturnValue(true);
+    commandMocks.openDialog.mockResolvedValue('學');
+
+    hanjaCommands[0]!.execute({
+      getContext: () => editableContext(),
+      getInputHandler: () => currentInputHandler,
+    } as never);
+    await vi.waitFor(() => {
+      expect(commandMocks.lookup).toHaveBeenCalledWith('학');
+    });
+    currentInputHandler = replacementInputHandler;
+    resolveLookup({ kind: 'word', source: '학', candidates: [] });
+
+    await vi.waitFor(() => {
+      expect(status.textContent).toBe('편집 위치가 바뀌어 한자 변환을 취소했습니다.');
+    });
+    expect(commandMocks.openDialog).not.toHaveBeenCalled();
+    expect(commandMocks.replaceSource).not.toHaveBeenCalled();
+    expect(originalInputHandler.focus).not.toHaveBeenCalled();
+    expect(replacementInputHandler.focus).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -188,6 +307,7 @@ describe('Hanja command', () => {
   it('does not open or steal focus when another modal appears during dictionary lookup', async () => {
     const status = { textContent: '' };
     const focus = vi.fn();
+    const inputHandler = editableInputHandler(focus);
     let modalOpen = false;
     let resolveLookup = (_value: unknown): void => {};
     const lookupPending = new Promise<unknown>((resolve) => {
@@ -203,7 +323,7 @@ describe('Hanja command', () => {
 
     hanjaCommands[0]!.execute({
       getContext: () => editableContext(),
-      getInputHandler: () => editableInputHandler(focus),
+      getInputHandler: () => inputHandler,
     } as never);
     modalOpen = true;
     resolveLookup({ kind: 'word', source: '학', candidates: [] });
@@ -216,7 +336,40 @@ describe('Hanja command', () => {
     expect(focus).not.toHaveBeenCalled();
   });
 
-  it('does not refocus the replaced document when generation changes while the dialog is open', async () => {
+  it('does not replace or refocus when the input handler changes while the dialog is open', async () => {
+    const status = { textContent: '' };
+    const originalInputHandler = editableInputHandler();
+    const replacementInputHandler = editableInputHandler();
+    let currentInputHandler = originalInputHandler;
+    let resolveDialog = (_value: string | null): void => {};
+    const dialogPending = new Promise<string | null>((resolve) => {
+      resolveDialog = resolve;
+    });
+    vi.stubGlobal('document', { getElementById: () => status });
+    commandMocks.readSource.mockReturnValue({ text: '학' });
+    commandMocks.lookup.mockResolvedValue({ kind: 'word', source: '학', candidates: [] });
+    commandMocks.sourceCurrent.mockReturnValue(true);
+    commandMocks.openDialog.mockReturnValue(dialogPending);
+
+    hanjaCommands[0]!.execute({
+      getContext: () => editableContext(),
+      getInputHandler: () => currentInputHandler,
+    } as never);
+    await vi.waitFor(() => {
+      expect(commandMocks.openDialog).toHaveBeenCalledOnce();
+    });
+    currentInputHandler = replacementInputHandler;
+    resolveDialog('學');
+
+    await vi.waitFor(() => {
+      expect(status.textContent).toBe('편집 위치가 바뀌어 한자 변환을 취소했습니다.');
+    });
+    expect(commandMocks.replaceSource).not.toHaveBeenCalled();
+    expect(originalInputHandler.focus).not.toHaveBeenCalled();
+    expect(replacementInputHandler.focus).not.toHaveBeenCalled();
+  });
+
+  it('does not report or refocus after the document changes while the dialog is open', async () => {
     const status = { textContent: '' };
     const inputHandler = editableInputHandler();
     let resolveDialog = (_value: string | null): void => {};
@@ -237,12 +390,125 @@ describe('Hanja command', () => {
       expect(commandMocks.openDialog).toHaveBeenCalledOnce();
     });
     advanceDocumentGeneration();
+    status.textContent = '새 문서 상태';
     resolveDialog(null);
 
-    await vi.waitFor(() => {
-      expect(status.textContent).toBe('한자 변환을 취소했습니다.');
-    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(status.textContent).toBe('새 문서 상태');
     expect(inputHandler.focus).not.toHaveBeenCalled();
+  });
+
+  it('lets a new document convert while stale lookup completion stays side-effect free', async () => {
+    const status = { textContent: '' };
+    const oldInputHandler = editableInputHandler();
+    const newInputHandler = editableInputHandler();
+    const documentStub = {
+      activeElement: oldInputHandler.textarea,
+      body: new EventTarget(),
+      getElementById: () => status,
+    };
+    let resolveOldLookup = (_value: unknown): void => {};
+    let resolveNewLookup = (_value: unknown): void => {};
+    let oldLookupReturned = false;
+    const oldLookup = new Promise<unknown>((resolve) => {
+      resolveOldLookup = (value) => resolve(value);
+    });
+    const newLookup = new Promise<unknown>((resolve) => {
+      resolveNewLookup = (value) => resolve(value);
+    });
+    vi.stubGlobal('document', documentStub);
+    commandMocks.readSource.mockReturnValue({ text: '학' });
+    commandMocks.lookup
+      .mockImplementationOnce(async () => {
+        const result = await oldLookup;
+        oldLookupReturned = true;
+        return result;
+      })
+      .mockReturnValueOnce(newLookup);
+    commandMocks.sourceCurrent.mockReturnValue(true);
+    commandMocks.openDialog.mockResolvedValue(null);
+
+    try {
+      hanjaCommands[0]!.execute({
+        getContext: () => editableContext(),
+        getInputHandler: () => oldInputHandler,
+      } as never);
+      expect(commandMocks.lookup).toHaveBeenCalledTimes(1);
+
+      advanceDocumentGeneration();
+      documentStub.activeElement = newInputHandler.textarea;
+      hanjaCommands[0]!.execute({
+        getContext: () => editableContext(),
+        getInputHandler: () => newInputHandler,
+      } as never);
+      expect(commandMocks.lookup).toHaveBeenCalledTimes(2);
+
+      status.textContent = '새 문서 상태';
+      resolveOldLookup({ kind: 'word', source: '학', candidates: [] });
+      await vi.waitFor(() => {
+        expect(oldLookupReturned).toBe(true);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(status.textContent).toBe('새 문서 상태');
+      expect(commandMocks.openDialog).not.toHaveBeenCalled();
+
+      hanjaCommands[0]!.execute({
+        getContext: () => editableContext(),
+        getInputHandler: () => newInputHandler,
+      } as never);
+      expect(commandMocks.lookup).toHaveBeenCalledTimes(2);
+    } finally {
+      resolveOldLookup({ kind: 'word', source: '학', candidates: [] });
+      resolveNewLookup({ kind: 'word', source: '학', candidates: [] });
+    }
+    await vi.waitFor(() => {
+      expect(commandMocks.openDialog).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('does not report a stale lookup failure after the document changes', async () => {
+    const status = { textContent: '' };
+    const focus = vi.fn();
+    const inputHandler = editableInputHandler(focus);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    let rejectLookup = (_error: HanjaLookupError): void => {};
+    let lookupReturned = false;
+    const lookupPending = new Promise<unknown>((_resolve, reject) => {
+      rejectLookup = (error) => reject(error);
+    });
+    vi.stubGlobal('document', {
+      activeElement: inputHandler.textarea,
+      body: new EventTarget(),
+      getElementById: () => status,
+    });
+    commandMocks.readSource.mockReturnValue({ text: '학' });
+    commandMocks.lookup.mockImplementation(async () => {
+      try {
+        return await lookupPending;
+      } finally {
+        lookupReturned = true;
+      }
+    });
+
+    hanjaCommands[0]!.execute({
+      getContext: () => editableContext(),
+      getInputHandler: () => inputHandler,
+    } as never);
+    await vi.waitFor(() => {
+      expect(commandMocks.lookup).toHaveBeenCalledOnce();
+    });
+    advanceDocumentGeneration();
+    status.textContent = '새 문서 상태';
+    rejectLookup(new HanjaLookupError('load-failed', '사전을 읽지 못했습니다.'));
+
+    await vi.waitFor(() => {
+      expect(lookupReturned).toBe(true);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(status.textContent).toBe('새 문서 상태');
+    expect(warn).not.toHaveBeenCalled();
+    expect(commandMocks.openDialog).not.toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
   });
 
   it('logs only bounded dictionary diagnostics without error-message or document text', () => {

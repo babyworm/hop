@@ -64,8 +64,13 @@ export function createDialogShell(
     window.removeEventListener('keydown', onKeyDown, true);
     stopWatchingDocument();
     overlay.remove();
-    if (restoreFocus) previouslyFocused?.focus();
-    resolve(value);
+    try {
+      if (restoreFocus) previouslyFocused?.focus();
+    } catch {
+      // Focus restoration is best-effort and must not prevent dialog settlement.
+    } finally {
+      resolve(value);
+    }
   };
 
   closeButton.addEventListener('click', () => close(null));

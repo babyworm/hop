@@ -285,6 +285,38 @@ describe('openHanjaConversionDialog', () => {
   });
 
   it.each([
+    ['an Error', new Error('focus restoration failed')],
+    ['a non-Error value', 'focus restoration failed'],
+  ])('settles once and removes listeners when restoring focus throws %s', async (_kind, thrown) => {
+    // Given
+    const previouslyFocused = fakeDocument.createElement('textarea');
+    let focusAttempts = 0;
+    previouslyFocused.focus = () => {
+      focusAttempts += 1;
+      throw thrown;
+    };
+    fakeDocument.body.appendChild(previouslyFocused);
+    fakeDocument.activeElement = previouslyFocused;
+    let settlements = 0;
+    const pending = openWordDialog().then((value) => {
+      settlements += 1;
+      return value;
+    });
+
+    // When
+    expect(() => fakeDocument.key('Escape')).not.toThrow();
+    await expect(pending).resolves.toBeNull();
+    fakeDocument.key('Escape');
+    const keyAfterClose = fakeDocument.key('F11');
+
+    // Then
+    expect(settlements).toBe(1);
+    expect(focusAttempts).toBe(1);
+    expect(keyAfterClose.defaultPrevented).toBe(false);
+    expect(fakeDocument.body.children).toEqual([previouslyFocused]);
+  });
+
+  it.each([
     ['Cancel', '.dialog-btn', 1],
     ['Close', '.dialog-close', 0],
   ])('lets the native %s button handle Enter', async (_name, selector, index) => {
@@ -469,7 +501,7 @@ function character(characterValue: string, label: string) {
   return {
     character: characterValue,
     label,
-    reading: words.at(-1) ?? '',
+    reading: words[words.length - 1] ?? '',
     meaning: words.slice(0, -1).join(' '),
     educationHanja: true,
     personalNameHanja: false,

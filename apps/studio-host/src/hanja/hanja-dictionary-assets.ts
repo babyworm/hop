@@ -29,6 +29,7 @@ export class HanjaDictionaryAssets {
     characters: HanjaCharacterDatabase;
     readings: HanjaReadingIndex;
   }> | null = null;
+  private noticesPromise: Promise<string> | null = null;
   private readonly shardPromises = new Map<string, Promise<HanjaWordShard>>();
 
   constructor(
@@ -118,11 +119,27 @@ export class HanjaDictionaryAssets {
     return promise;
   }
 
-  private async loadJson(file: string, integrity?: AssetIntegrity): Promise<unknown> {
+  loadNotices(): Promise<string> {
+    if (!this.noticesPromise) {
+      this.noticesPromise = this.loadManifest()
+        .then((manifest) => this.loadText(
+          manifest.notices.file,
+          this.trustedIntegrity(manifest.notices),
+        ))
+        .catch((error) => {
+          this.noticesPromise = null;
+          throw normalizeLoadError(error);
+        });
+    }
+    return this.noticesPromise;
+  }
+
+  private async loadText(file: string, integrity?: AssetIntegrity): Promise<string> {
     let response: Response;
     try {
       response = await this.fetcher(`${this.baseUrl}${file}`);
     } catch (error) {
+      if (error instanceof HanjaLookupError) throw error;
       throw normalizeLoadError(error, file);
     }
     if (!response.ok) {
@@ -145,10 +162,22 @@ export class HanjaDictionaryAssets {
     }
     if (integrity) await assertAssetIntegrity(bytes, integrity, file);
     try {
-      const json = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-      const value: unknown = JSON.parse(json);
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch (error) {
+      throw new HanjaLookupError(
+        'invalid-data',
+        '한자 사전 텍스트를 해석하지 못했습니다.',
+        { asset: file, cause: error },
+      );
+    }
+  }
+
+  private async loadJson(file: string, integrity?: AssetIntegrity): Promise<unknown> {
+    try {
+      const value: unknown = JSON.parse(await this.loadText(file, integrity));
       return value;
     } catch (error) {
+      if (error instanceof HanjaLookupError) throw error;
       throw new HanjaLookupError(
         'invalid-data',
         '한자 사전 JSON을 해석하지 못했습니다.',

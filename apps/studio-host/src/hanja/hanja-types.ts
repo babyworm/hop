@@ -42,6 +42,7 @@ export interface HanjaManifest {
   schemaVersion: number;
   characterDatabase: HanjaAssetDescriptor;
   readingIndex: HanjaAssetDescriptor;
+  notices: HanjaAssetDescriptor;
   wordDatabase: {
     initialShards: string[];
     files: Array<HanjaAssetDescriptor & { shard: string }>;

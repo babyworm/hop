@@ -170,6 +170,7 @@ export function serializeReadingIndex(characters) {
 
 export async function writeDatabase(characters, words) {
   await mkdir(outputDir, { recursive: true });
+  const noticeContent = await readFile(join(outputDir, 'THIRD_PARTY_NOTICES.md'));
   const characterContent = jsonLine(serializeCharacters(characters));
   await writeFile(join(outputDir, 'characters.json'), characterContent);
   const readingContent = jsonLine(serializeReadingIndex(characters));
@@ -225,7 +226,11 @@ export async function writeDatabase(characters, words) {
       entries: wordFiles.reduce((sum, file) => sum + file.entries, 0),
       candidates: wordFiles.reduce((sum, file) => sum + file.candidates, 0),
     },
-    notices: 'THIRD_PARTY_NOTICES.md',
+    notices: {
+      file: 'THIRD_PARTY_NOTICES.md',
+      sha256: sha256(noticeContent),
+      bytes: noticeContent.length,
+    },
   };
   await writeFile(join(outputDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   return manifest;

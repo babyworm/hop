@@ -244,5 +244,9 @@
     "entries": 276704,
     "candidates": 335455
   },
-  "notices": "THIRD_PARTY_NOTICES.md"
+  "notices": {
+    "file": "THIRD_PARTY_NOTICES.md",
+    "sha256": "86d449aa0dccc7f3d24c11965e6766d0ca9472c588a687cb3ad79f638c4a579a",
+    "bytes": 6161
+  }
 }
