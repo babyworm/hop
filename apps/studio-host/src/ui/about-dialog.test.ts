@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const loadBundledHanjaNotices = vi.hoisted(() => vi.fn());
+const aboutDialogCss = readNodeTextFile(
+  new URL('../styles/about-dialog.css', import.meta.url),
+);
 
 vi.mock('../hanja/hanja-dictionary', () => ({ loadBundledHanjaNotices }));
 vi.mock('@/upstream/ui', () => ({
@@ -121,4 +124,29 @@ describe('AboutDialog Hanja notices', () => {
     expect(content?.children).toHaveLength(0);
     expect(loadBundledHanjaNotices).toHaveBeenCalledOnce();
   });
+
+  it('keeps a viewport-height fallback for macOS 12.0 WebKit', () => {
+    const rule = cssRule('.hop-about-dialog');
+    expect(rule).toContain('max-height: calc(100vh - 32px);');
+    expect(rule).toContain('max-height: calc(100dvh - 32px);');
+  });
 });
+
+function cssRule(selector: string): string {
+  const start = aboutDialogCss.indexOf(`${selector} {`);
+  if (start < 0) throw new Error(`missing CSS rule: ${selector}`);
+  const end = aboutDialogCss.indexOf('}', start);
+  if (end < 0) throw new Error(`unterminated CSS rule: ${selector}`);
+  return aboutDialogCss.slice(start, end + 1);
+}
+
+function readNodeTextFile(url: URL): string {
+  interface NodeProcess {
+    getBuiltinModule(name: 'node:fs'): {
+      readFileSync(path: URL, encoding: 'utf8'): string;
+    };
+  }
+  const nodeProcess = (globalThis as typeof globalThis & { process?: NodeProcess }).process;
+  if (!nodeProcess) throw new Error('CSS contract tests require Node.js');
+  return nodeProcess.getBuiltinModule('node:fs').readFileSync(url, 'utf8');
+}

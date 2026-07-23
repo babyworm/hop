@@ -35,6 +35,7 @@
 @media (min-width: 768px) {
   .hop-about-dialog {
     display: flex;
+    max-height: calc(100vh - 32px);
     max-height: calc(100dvh - 32px);
     flex-direction: column;
   }

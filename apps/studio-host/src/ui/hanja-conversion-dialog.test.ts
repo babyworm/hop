@@ -462,7 +462,7 @@ describe('openHanjaConversionDialog', () => {
   });
 
   it('uses a solid focus border in addition to the soft listbox halo', () => {
-    expect(cssRule('.hanja-candidate-list:focus-visible'))
+    expect(cssRule('.hanja-candidate-list:focus'))
       .toContain('outline: 1px solid var(--color-focus-border);');
   });
 

@@ -6,6 +6,10 @@ import {
 } from './hanja-context-menu';
 import { hanjaConversionShortcutLabel } from '../command/shortcut-map';
 
+const entryPointCss = readNodeTextFile(
+  new URL('../styles/hanja-entry-points.css', import.meta.url),
+);
+
 describe('Hanja conversion entry points', () => {
   it('places the Input menu command directly below Character Table', () => {
     const html = studioHtml;
@@ -40,6 +44,11 @@ describe('Hanja conversion entry points', () => {
     expect(toolbar).toBeGreaterThan(-1);
     expect(conversion).toBeGreaterThan(toolbar);
     expect(conversion).toBeLessThan(hyperlink);
+  });
+
+  it('keeps the menu icon absolute while positioning the toolbar glyph', () => {
+    expect(cssRule('.icon-hanja')).not.toContain('position:');
+    expect(cssRule('.tb-sprite.icon-hanja')).toContain('position: relative;');
   });
 
   it('offers the context submenu for a Hangul conversion source', () => {
@@ -99,4 +108,23 @@ function editableContext() {
     inCellSelectionMode: false,
     hasMultiCellSelection: false,
   };
+}
+
+function cssRule(selector: string): string {
+  const start = entryPointCss.indexOf(`${selector} {`);
+  if (start < 0) throw new Error(`missing CSS rule: ${selector}`);
+  const end = entryPointCss.indexOf('}', start);
+  if (end < 0) throw new Error(`unterminated CSS rule: ${selector}`);
+  return entryPointCss.slice(start, end + 1);
+}
+
+function readNodeTextFile(url: URL): string {
+  interface NodeProcess {
+    getBuiltinModule(name: 'node:fs'): {
+      readFileSync(path: URL, encoding: 'utf8'): string;
+    };
+  }
+  const nodeProcess = (globalThis as typeof globalThis & { process?: NodeProcess }).process;
+  if (!nodeProcess) throw new Error('CSS contract tests require Node.js');
+  return nodeProcess.getBuiltinModule('node:fs').readFileSync(url, 'utf8');
 }

@@ -1,6 +1,5 @@
 .icon-hanja {
   background-image: none !important;
-  position: relative;
 }
 
 .icon-hanja::before {
@@ -17,6 +16,10 @@
 .md-icon.icon-hanja::before {
   font-size: 15px;
   line-height: 16px;
+}
+
+.tb-sprite.icon-hanja {
+  position: relative;
 }
 
 .tb-sprite.icon-hanja::before {
