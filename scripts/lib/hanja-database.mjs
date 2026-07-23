@@ -17,18 +17,21 @@ export const sources = {
     version: 'a34aef73378c0992316861bbf13fc914ee7577d9',
     url: 'https://raw.githubusercontent.com/libhangul/libhangul/a34aef73378c0992316861bbf13fc914ee7577d9/data/hanja/hanja.txt',
     sha256: 'dd44dcc856cf542b1022d0f39c2e9b9f8805fdcc5923be80f04849ed97ce0996',
+    bytes: 6_452_522,
     license: 'BSD-3-Clause',
   },
   unihan: {
     version: '17.0.0',
     url: 'https://www.unicode.org/Public/17.0.0/ucd/Unihan.zip',
     sha256: 'f7a48b2b545acfaa77b2d607ae28747404ce02baefee16396c5d2d7a8ef34b5e',
+    bytes: 8_518_517,
     license: 'Unicode-3.0',
   },
   krdict: {
     version: '2026-07-19',
     url: 'https://krdict.korean.go.kr/dicBatchDownload?seq=211',
     sha256: '13ff666e78363e3abc73cdb2e582a6776ddfa7a120f18c0b79bd03fa56d860f9',
+    bytes: 84_442_933,
     license: 'CC-BY-SA-2.0-KR',
   },
   stdict: {
@@ -48,14 +51,54 @@ export async function downloadSource(source) {
   if (source === sources.krdict) {
     headers.Referer = 'https://krdict.korean.go.kr/download/downloadPopup?lang=ko';
   }
-  const response = await fetch(source.url, { headers, redirect: 'follow' });
+  const response = await fetch(source.url, {
+    headers,
+    redirect: 'follow',
+    signal: AbortSignal.timeout(300_000),
+  });
   if (!response.ok) throw new Error(`download failed (${response.status}): ${source.url}`);
-  const content = Buffer.from(await response.arrayBuffer());
+  const content = await readBoundedSource(response, source.bytes, source.url);
   const actualHash = sha256(content);
   if (actualHash !== source.sha256) {
     throw new Error(`${source.url} SHA-256 mismatch: expected ${source.sha256}, got ${actualHash}`);
   }
+  if (content.byteLength !== source.bytes) {
+    throw new Error(`${source.url} size mismatch: expected ${source.bytes}, got ${content.byteLength}`);
+  }
   return content;
+}
+
+async function readBoundedSource(response, maximumBytes, url) {
+  const declaredLength = Number(response.headers?.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
+    throw new Error(`${url} size exceeds pinned ${maximumBytes} bytes`);
+  }
+  if (!response.body) {
+    const content = Buffer.from(await response.arrayBuffer());
+    if (content.byteLength > maximumBytes) {
+      throw new Error(`${url} size exceeds pinned ${maximumBytes} bytes`);
+    }
+    return content;
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let byteLength = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      byteLength += value.byteLength;
+      if (byteLength > maximumBytes) {
+        await reader.cancel();
+        throw new Error(`${url} size exceeds pinned ${maximumBytes} bytes`);
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, byteLength);
 }
 
 export async function readStdictSupplement() {
@@ -196,10 +239,6 @@ export function shardForWord(word) {
 
 export function sha256(content) {
   return createHash('sha256').update(content).digest('hex');
-}
-
-export async function readJson(path) {
-  return JSON.parse(await readFile(path, 'utf8'));
 }
 
 function compareCharacterPriority(left, right, leftCharacter, rightCharacter) {

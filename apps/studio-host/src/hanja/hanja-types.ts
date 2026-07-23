@@ -32,13 +32,19 @@ export interface HanjaWordShard {
   entries: Record<string, HanjaWordRecord[]>;
 }
 
+export interface HanjaAssetDescriptor {
+  file: string;
+  bytes?: number;
+  sha256?: string;
+}
+
 export interface HanjaManifest {
   schemaVersion: number;
-  characterDatabase: { file: string };
-  readingIndex: { file: string };
+  characterDatabase: HanjaAssetDescriptor;
+  readingIndex: HanjaAssetDescriptor;
   wordDatabase: {
     initialShards: string[];
-    files: Array<{ shard: string; file: string }>;
+    files: Array<HanjaAssetDescriptor & { shard: string }>;
   };
 }
 

@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   outputDir,
-  readJson,
   sha256,
   shardForWord,
   shardNames,
@@ -18,7 +17,14 @@ const singleHanPattern = /^\p{Script=Han}$/u;
 const safeOriginPattern = /^[\p{Script=Han}가-힣A-Za-z0-9·ㆍ-]+$/u;
 
 export async function verifyHanjaDatabase() {
-  const manifest = await readJson(join(outputDir, 'manifest.json'));
+  const manifestContent = await readFile(join(outputDir, 'manifest.json'));
+  const trust = JSON.parse(await readFile(join(
+    outputDir,
+    '../../../src/hanja/hanja-dictionary-trust.json',
+  )));
+  assert.equal(trust.schemaVersion, 1);
+  assert.equal(sha256(manifestContent), trust.manifestSha256);
+  const manifest = JSON.parse(manifestContent);
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.dataVersion, sources.krdict.version);
   assert.deepEqual(manifest.sources, sources);
@@ -34,6 +40,10 @@ export async function verifyHanjaDatabase() {
   assert.equal(sha256(stdictContent), sources.stdict.supplementSha256);
   const stdictSupplement = JSON.parse(stdictContent);
   assert.equal(stdictSupplement.schemaVersion, 1);
+  assert.equal(stdictSupplement.source.version, stdictSnapshot.version);
+  assert.equal(stdictSupplement.source.mirrorCommit, stdictSnapshot.mirrorCommit);
+  assert.equal(stdictSupplement.source.sourceDigest, stdictSnapshot.sourceDigest);
+  assert.equal(stdictSupplement.source.sourceFiles, stdictSnapshot.expectedFiles);
   assert.equal(stdictSupplement.source.sourceItems, stdictSnapshot.expectedItems);
   assert.equal(stdictSupplement.pairs.length, stdictSnapshot.expectedSafePairs);
 

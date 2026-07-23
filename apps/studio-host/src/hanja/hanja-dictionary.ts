@@ -1,21 +1,14 @@
 import type {
   HanjaCharacterCandidate,
-  HanjaCharacterDatabase,
   HanjaCharacterRecord,
   HanjaGlyphDetail,
   HanjaLookupResult,
-  HanjaManifest,
-  HanjaReadingIndex,
   HanjaToHangulLookup,
-  HanjaWordShard,
 } from './hanja-types';
-import {
-  HanjaLookupError,
-  parseHanjaCharacterDatabase,
-  parseHanjaManifest,
-  parseHanjaReadingIndex,
-  parseHanjaWordShard,
-} from './hanja-dictionary-validation';
+import dictionaryTrust from './hanja-dictionary-trust.json';
+import type { HanjaAssetFetcher } from './hanja-dictionary-assets';
+import { HanjaDictionaryAssets } from './hanja-dictionary-assets';
+import { HanjaLookupError } from './hanja-dictionary-validation';
 
 export type {
   HanjaCharacterCandidate,
@@ -29,25 +22,17 @@ export type {
 } from './hanja-types';
 export { HanjaLookupError } from './hanja-dictionary-validation';
 
-type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-
 const MAX_CONVERSION_LENGTH = 64;
-const MAX_ASSET_BYTES = 8 * 1024 * 1024;
 
 export class HanjaDictionary {
-  private readonly baseUrl: string;
-  private manifestPromise: Promise<HanjaManifest> | null = null;
-  private corePromise: Promise<{
-    characters: HanjaCharacterDatabase;
-    readings: HanjaReadingIndex;
-  }> | null = null;
-  private readonly shardPromises = new Map<string, Promise<HanjaWordShard>>();
+  private readonly assets: HanjaDictionaryAssets;
 
   constructor(
     baseUrl = 'dictionaries/hanja/',
-    private readonly fetcher: Fetcher = globalThis.fetch.bind(globalThis),
+    fetcher: HanjaAssetFetcher = globalThis.fetch.bind(globalThis),
+    expectedManifestSha256?: string,
   ) {
-    this.baseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    this.assets = new HanjaDictionaryAssets(baseUrl, fetcher, expectedManifestSha256);
   }
 
   async lookup(input: string): Promise<HanjaLookupResult> {
@@ -56,11 +41,11 @@ export class HanjaDictionary {
       throw new HanjaLookupError('invalid-input', '한글 음절로 이루어진 단어만 변환할 수 있습니다.');
     }
 
-    const manifest = await this.loadManifest();
+    const manifest = await this.assets.loadManifest();
     const shard = wordShardFor(source, manifest.wordDatabase.initialShards);
     const [{ characters, readings }, wordShard] = await Promise.all([
-      this.loadCore(),
-      this.loadShard(shard),
+      this.assets.loadCore(),
+      this.assets.loadShard(shard),
     ]);
     const words = wordShard.entries[source] ?? [];
     if (words.length > 0) {
@@ -96,7 +81,7 @@ export class HanjaDictionary {
       throw new HanjaLookupError('invalid-input', '한자로 이루어진 단어만 한글로 변환할 수 있습니다.');
     }
 
-    const { characters } = await this.loadCore();
+    const { characters } = await this.assets.loadCore();
     const units = Array.from(source, (character) => {
       const record = characters.entries[character];
       if (!record) {
@@ -112,120 +97,14 @@ export class HanjaDictionary {
     return { kind: 'hangul', source, characters: units };
   }
 
-  private loadManifest(): Promise<HanjaManifest> {
-    if (!this.manifestPromise) {
-      this.manifestPromise = this.loadJson('manifest.json')
-        .then((manifest) => parseHanjaManifest(manifest, 'manifest.json'))
-        .catch((error) => {
-          this.manifestPromise = null;
-          throw normalizeLoadError(error);
-        });
-    }
-    return this.manifestPromise;
-  }
-
-  private loadCore(): Promise<{
-    characters: HanjaCharacterDatabase;
-    readings: HanjaReadingIndex;
-  }> {
-    if (!this.corePromise) {
-      this.corePromise = this.loadManifest()
-        .then(async (manifest) => {
-          const [characters, readings] = await Promise.all([
-            this.loadJson(manifest.characterDatabase.file),
-            this.loadJson(manifest.readingIndex.file),
-          ]);
-          const parsedCharacters = parseHanjaCharacterDatabase(
-            characters,
-            manifest.characterDatabase.file,
-          );
-          const parsedReadings = parseHanjaReadingIndex(
-            readings,
-            parsedCharacters,
-            manifest.readingIndex.file,
-          );
-          return { characters: parsedCharacters, readings: parsedReadings };
-        })
-        .catch((error) => {
-          this.corePromise = null;
-          throw normalizeLoadError(error);
-        });
-    }
-    return this.corePromise;
-  }
-
-  private loadShard(shard: string): Promise<HanjaWordShard> {
-    const cached = this.shardPromises.get(shard);
-    if (cached) return cached;
-
-    const promise = this.loadManifest()
-      .then(async (manifest) => {
-        const descriptor = manifest.wordDatabase.files.find((file) => file.shard === shard);
-        if (!descriptor) {
-          throw new HanjaLookupError(
-            'invalid-data',
-            `한자 단어 샤드를 찾을 수 없습니다: ${shard}`,
-            { asset: 'manifest.json' },
-          );
-        }
-        return { descriptor, wordShard: await this.loadJson(descriptor.file) };
-      })
-      .then(({ descriptor, wordShard }) => parseHanjaWordShard(wordShard, shard, descriptor.file))
-      .catch((error) => {
-        this.shardPromises.delete(shard);
-        throw normalizeLoadError(error);
-      });
-    this.shardPromises.set(shard, promise);
-    return promise;
-  }
-
-  private async loadJson(file: string): Promise<unknown> {
-    let response: Response;
-    try {
-      response = await this.fetcher(`${this.baseUrl}${file}`);
-    } catch (error) {
-      throw normalizeLoadError(error, file);
-    }
-    if (!response.ok) {
-      throw new HanjaLookupError(
-        'load-failed',
-        `한자 사전 파일을 읽지 못했습니다 (${response.status}).`,
-        { asset: file, status: response.status },
-      );
-    }
-    let bytes: ArrayBuffer;
-    try {
-      bytes = await response.arrayBuffer();
-    } catch (error) {
-      throw new HanjaLookupError(
-        'invalid-data',
-        '한자 사전 파일을 읽지 못했습니다.',
-        { asset: file, cause: error },
-      );
-    }
-    if (bytes.byteLength > MAX_ASSET_BYTES) {
-      throw new HanjaLookupError(
-        'invalid-data',
-        '한자 사전 파일이 허용된 크기를 초과했습니다.',
-        { asset: file },
-      );
-    }
-    try {
-      const json = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-      const value: unknown = JSON.parse(json);
-      return value;
-    } catch (error) {
-      throw new HanjaLookupError(
-        'invalid-data',
-        '한자 사전 JSON을 해석하지 못했습니다.',
-        { asset: file, cause: error },
-      );
-    }
-  }
 }
 
 export function createBundledHanjaDictionary(): HanjaDictionary {
-  return new HanjaDictionary(new URL('./dictionaries/hanja/', document.baseURI).toString());
+  return new HanjaDictionary(
+    new URL('./dictionaries/hanja/', document.baseURI).toString(),
+    globalThis.fetch.bind(globalThis),
+    dictionaryTrust.manifestSha256,
+  );
 }
 
 function wordShardFor(word: string, initialShards: readonly string[]): string {
@@ -321,15 +200,6 @@ function detailFromRecord(
     reading,
     meaning,
   };
-}
-
-function normalizeLoadError(error: unknown, asset?: string): HanjaLookupError {
-  if (error instanceof HanjaLookupError) return error;
-  return new HanjaLookupError(
-    'load-failed',
-    '내장 한자 사전을 불러오지 못했습니다.',
-    { asset, cause: error },
-  );
 }
 
 function isHanjaText(value: string): boolean {

@@ -218,11 +218,18 @@ describe('HanjaDictionary', () => {
       .rejects.toMatchObject({ code: 'invalid-data', asset: 'readings.json' });
   });
 
-  it('rejects an asset whose encoded payload exceeds the byte limit before parsing JSON', async () => {
+  it('rejects an oversized Content-Length before reading the response body', async () => {
+    const arrayBuffer = vi.fn();
     const fetcher = vi.fn(async (input: string | URL) => {
       const path = String(input);
       if (path.endsWith('manifest.json')) {
-        return oversizedResponse(manifest, MAX_ASSET_BYTES + 1);
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'Content-Length': String(MAX_ASSET_BYTES + 1) }),
+          body: null,
+          arrayBuffer,
+        } as unknown as Response;
       }
       throw new Error(`unexpected fetch: ${path}`);
     });
@@ -233,6 +240,86 @@ describe('HanjaDictionary', () => {
         asset: 'manifest.json',
         message: expect.stringContaining('크기'),
       });
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
+
+  it('cancels a streamed asset as soon as its bytes exceed the limit', async () => {
+    const cancel = vi.fn(async () => undefined);
+    const arrayBuffer = vi.fn();
+    const chunks = [new Uint8Array(MAX_ASSET_BYTES), new Uint8Array(1)];
+    let index = 0;
+    const fetcher = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      body: {
+        getReader: () => ({
+          read: async () => index < chunks.length
+            ? { done: false, value: chunks[index++] }
+            : { done: true, value: undefined },
+          cancel,
+          releaseLock: vi.fn(),
+        }),
+      },
+      arrayBuffer,
+    })) as unknown as typeof fetch;
+
+    await expect(new HanjaDictionary('/dictionaries/hanja/', fetcher).lookup('학교'))
+      .rejects.toMatchObject({ code: 'invalid-data', asset: 'manifest.json' });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
+
+  it('rejects a bundled manifest that does not match its reviewed trust anchor', async () => {
+    const fetcher = vi.fn(async () => response(manifest));
+    const dictionary = new HanjaDictionary(
+      '/dictionaries/hanja/',
+      fetcher as typeof fetch,
+      '0'.repeat(64),
+    );
+
+    await expect(dictionary.lookup('학교')).rejects.toMatchObject({
+      code: 'invalid-data',
+      asset: 'manifest.json',
+    });
+  });
+
+  it('rejects a bundled asset whose bytes do not match the trusted manifest', async () => {
+    const characterBytes = encoded(characters);
+    const readingBytes = encoded(readings);
+    const trustedManifest = {
+      ...manifest,
+      characterDatabase: {
+        file: 'characters.json',
+        bytes: characterBytes.byteLength,
+        sha256: await sha256Hex(characterBytes),
+      },
+      readingIndex: {
+        file: 'readings.json',
+        bytes: readingBytes.byteLength,
+        sha256: await sha256Hex(readingBytes),
+      },
+    };
+    const manifestBytes = encoded(trustedManifest);
+    const fetcher = vi.fn(async (input: string | URL) => {
+      const path = String(input);
+      if (path.endsWith('manifest.json')) return rawResponse(manifestBytes, async () => trustedManifest);
+      if (path.endsWith('characters.json')) {
+        return response({ ...characters, entries: { ...characters.entries, 學: undefined } });
+      }
+      if (path.endsWith('readings.json')) return rawResponse(readingBytes, async () => readings);
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    const dictionary = new HanjaDictionary(
+      '/dictionaries/hanja/',
+      fetcher as typeof fetch,
+      await sha256Hex(manifestBytes),
+    );
+
+    await expect(dictionary.lookupHanja('學')).rejects.toMatchObject({
+      code: 'invalid-data',
+      asset: 'characters.json',
+    });
   });
 
   it('rejects a manifest with excessive file descriptors', async () => {
@@ -466,11 +553,18 @@ describe('HanjaDictionary', () => {
 });
 
 function response(value: unknown): Response {
-  return rawResponse(new TextEncoder().encode(JSON.stringify(value)), async () => value);
+  return rawResponse(encoded(value), async () => value);
 }
 
-function oversizedResponse(value: unknown, byteLength: number): Response {
-  return rawResponse(new Uint8Array(byteLength), async () => value);
+function encoded(value: unknown): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(value));
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digestInput = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(digestInput).set(bytes);
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', digestInput);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function rawResponse(bytes: Uint8Array, json: () => Promise<unknown>): Response {

@@ -8,6 +8,7 @@ export const stdictSnapshot = {
   expectedFiles: 88,
   expectedItems: 436_578,
   expectedSafePairs: 163_626,
+  sourceDigest: '9d33d037278c85c66f6ce69da896d8645a2a57ec5571e7d6cc6d1fbe7dbadf1b',
 };
 
 const hangulWordPattern = /^[가-힣]+$/u;
@@ -35,6 +36,10 @@ export async function extractStdictSupplement(sourceDirectory) {
     }
   }
 
+  const sourceDigest = sourceHash.digest('hex');
+  if (sourceDigest !== stdictSnapshot.sourceDigest) {
+    throw new Error(`standard dictionary source digest mismatch: expected ${stdictSnapshot.sourceDigest}, got ${sourceDigest}`);
+  }
   if (sourceItems !== stdictSnapshot.expectedItems) {
     throw new Error(`expected ${stdictSnapshot.expectedItems} standard dictionary items, got ${sourceItems}`);
   }
@@ -51,7 +56,7 @@ export async function extractStdictSupplement(sourceDirectory) {
       dictionary: '국립국어원 표준국어대사전',
       version: stdictSnapshot.version,
       mirrorCommit: stdictSnapshot.mirrorCommit,
-      sourceDigest: sourceHash.digest('hex'),
+      sourceDigest,
       sourceFiles: filenames.length,
       sourceItems,
       buildDate: '2026-06-05',

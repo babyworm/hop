@@ -6,18 +6,21 @@
       "version": "a34aef73378c0992316861bbf13fc914ee7577d9",
       "url": "https://raw.githubusercontent.com/libhangul/libhangul/a34aef73378c0992316861bbf13fc914ee7577d9/data/hanja/hanja.txt",
       "sha256": "dd44dcc856cf542b1022d0f39c2e9b9f8805fdcc5923be80f04849ed97ce0996",
+      "bytes": 6452522,
       "license": "BSD-3-Clause"
     },
     "unihan": {
       "version": "17.0.0",
       "url": "https://www.unicode.org/Public/17.0.0/ucd/Unihan.zip",
       "sha256": "f7a48b2b545acfaa77b2d607ae28747404ce02baefee16396c5d2d7a8ef34b5e",
+      "bytes": 8518517,
       "license": "Unicode-3.0"
     },
     "krdict": {
       "version": "2026-07-19",
       "url": "https://krdict.korean.go.kr/dicBatchDownload?seq=211",
       "sha256": "13ff666e78363e3abc73cdb2e582a6776ddfa7a120f18c0b79bd03fa56d860f9",
+      "bytes": 84442933,
       "license": "CC-BY-SA-2.0-KR"
     },
     "stdict": {
