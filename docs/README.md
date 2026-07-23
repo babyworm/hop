@@ -10,6 +10,7 @@ docs/
   KEYBOARD_SHORTCUTS.md      키보드 단축키 레퍼런스
   architecture/
     UPSTREAM.md              upstream rhwp 경계와 업데이트 방식
+    HANJA_DATABASE.md        오프라인 한글·한자 변환 데이터와 안전 경계
   operations/
     DESKTOP_RELEASE.md       데스크톱 릴리즈와 서명/공증 메모
     RHWP_UPDATE.md           rhwp 업데이트 실행 체크리스트와 복구 절차
@@ -17,7 +18,7 @@ docs/
 
 ## 작성 규칙
 
-* 새 기능 스펙이 필요하면 `docs/specs/<topic>/` 아래에 둔다.
+* 새 기능 스펙이 필요하면 `docs/specs/<topic>/` 아래에 둔다. 구현 후에도 유지할 공통 데이터·신뢰 경계는 `docs/architecture/`에 통합한다.
 * 작업용 계획 문서나 구현 상태 추적 문서는 구현이 끝나면 커밋 후 삭제한다. 완료 기록은 git history를 기준으로 확인한다.
 * 로컬 개발 환경과 명령은 `docs/DEVELOPMENT.md`에 둔다.
 * 여러 스펙에 걸쳐 적용되는 아키텍처 결정은 `docs/architecture/`에 둔다.

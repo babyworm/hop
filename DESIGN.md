@@ -31,7 +31,7 @@ The experience should:
 
 Primary users are Korean-language document authors and reviewers who open existing HWP/HWPX files, make precise edits, save or export them, and expect familiar word-processor shortcuts.
 
-Core tasks include opening and saving documents, editing and formatting text, working with tables and embedded objects, finding content, printing/exporting, and converting Korean readings to appropriate Hanja while preserving document structure and undo history.
+Core tasks include opening and saving documents, editing and formatting text, working with tables and embedded objects, finding content, printing/exporting, and converting between Korean readings and Hanja while preserving document structure and undo history.
 
 ## Information architecture
 
@@ -72,12 +72,13 @@ Use `role="listbox"` and `role="option"` with `aria-selected`. Selected items us
 
 ### Hanja conversion dialog
 
-The dialog has one of two modes:
+The dialog has one of three modes:
 
 - Word candidates: a list of complete replacements, with the Hanja form as the primary line and per-character 훈음 plus dictionary definition as secondary information.
 - Character fallback: a row of source syllables, a live assembled preview, and a candidate list for the active syllable. Left/Right changes the active syllable; Up/Down changes its candidate; Enter accepts the current character and advances, or applies on the final syllable.
+- Hanja readings: a row of source Hanja, a live assembled Hangul preview, and the available Korean readings and meanings for the active glyph. Navigation and confirmation match character fallback mode.
 
-The original Hangul stays visible. Candidate text is never represented by color alone. The dialog must distinguish “word candidate” and “character-by-character” modes in text.
+The original source stays visible. Candidate text is never represented by color alone. The dialog must identify the active conversion direction and distinguish whole-word and character-by-character choices in text.
 
 ## Accessibility
 
@@ -98,7 +99,7 @@ Dialogs use a desktop width capped by `calc(100vw - 32px)` and a candidate list 
 - Loading: status bar reports that the bundled dictionary is loading; no empty dialog flashes.
 - Word match: complete word candidates are preferred over character fallback.
 - No word match: every Hangul syllable must have at least one labeled character candidate before the fallback dialog opens.
-- Unsupported input: empty text, non-Hangul text, cross-paragraph selections, form mode, unsupported note/header editing contexts, or missing candidates produce a concise status message and make no edit.
+- Unsupported input: empty or mixed text, text other than a pure Hangul or Hanja run, cross-paragraph selections, paragraphs containing inline controls, ClickHere fields or form mode, unsupported note/header editing contexts, or missing candidates produce a concise status message and make no edit.
 - Stale range: if the editor range changes while data or the modal is open, conversion is cancelled safely.
 - Failure: bundled asset parse/load failures are logged without document content and summarized in the status bar.
 - Success: the replacement is one undoable edit and the status bar confirms the source and result.
@@ -108,9 +109,10 @@ Dialogs use a desktop width capped by `calc(100vw - 32px)` and a candidate list 
 - HOP UI and behavior live in `apps/studio-host`; `third_party/rhwp` remains read-only.
 - The bundled static dictionary is the runtime source. No API key or network service is required.
 - Commands must dispatch through the existing registry. Shortcuts normally use the late matcher;
-  F9 is the narrow exception because it must run before upstream clears the text selection. Its
-  capture handler may run only for unmodified F9 from the active editor input, with no modal, IME
-  composition, or image/shape/textbox/connector/polygon placement mode active.
+  F9 and Alt/Option+F9 are the narrow conversion exceptions because they must run before upstream
+  clears the text selection. Their capture handler may run only from the active editor input, with
+  no other modifier, modal, IME composition, or image/shape/textbox/connector/polygon placement
+  mode active. F9 converts Hangul to Hanja; Alt/Option+F9 converts Hanja to Hangul.
 - Text mutation goes through upstream's undo-aware operation router.
 - Replacement lengths use document character counts rather than JavaScript UTF-16 code units so supplementary-plane Hanja remain undo-safe.
 - DOM text uses `textContent`; dictionary content is never injected as HTML.
@@ -118,4 +120,4 @@ Dialogs use a desktop width capped by `calc(100vw - 32px)` and a candidate list 
 
 ## Open questions
 
-The initial release intentionally leaves contextual candidate ranking, per-user frequency learning, and optional live National Institute of Korean Language API enrichment for later evaluation. These do not block the deterministic offline F9 flow.
+The initial release intentionally leaves contextual candidate ranking, per-user frequency learning, and optional live National Institute of Korean Language API enrichment for later evaluation. These do not block the deterministic offline conversion flow.
