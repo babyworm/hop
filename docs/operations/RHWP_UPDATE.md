@@ -12,7 +12,7 @@
 * `apps/studio-host/vendor/rhwp-core`의 WASM package와 provenance
 * desktop과 Quick Look의 `Cargo.lock`
 * upstream에서 미러링하는 studio asset
-* `config/rhwp-studio-overrides.json`의 upstream counterpart hash
+* `config/rhwp-studio-overrides.json`의 upstream counterpart와 private input hash
 
 `third_party/rhwp` 파일을 직접 고치거나 HOP 기능을 그 안에 추가하지 않는다.
 
@@ -76,6 +76,9 @@ git diff -- apps/studio-host/vendor/rhwp-core/PROVENANCE.json
 * Cargo lockfile의 `rhwp`가 새 버전 하나만 가리키고 필요한 patch source/revision이 유지된다.
 * updater가 출력한 `Review changed studio inputs`의 각 파일을 upstream diff와 비교한다.
 * `extension` 또는 `fork` counterpart 변경이 HOP adapter와 override의 전제 조건을 깨지 않는다.
+* `private-input:` 변경이 cursor, history, 단축키 capture adapter의 비공개 필드 전제를 깨지 않는다.
+* context-menu 구현과 `styles/menu-bar.css`, `styles/dialogs.css` 변경이 HOP 한자 하위 메뉴의 DOM/CSS
+  클래스 및 배치 전제를 깨지 않는다.
 * upstream에서 사라진 command, import, public asset 또는 native API를 HOP가 계속 참조하지 않는다.
 * upstream 새 기능을 HOP 제품 정책에 자동 노출하지 않는다. 파일 형식, 저장, 인쇄, 창, recovery 동작은
   별도로 채택 여부를 결정한다.
@@ -136,6 +139,6 @@ pnpm upstream:verify
 
 * 업데이트 대상이 공식 source의 불변 안정 태그와 정확한 commit으로 고정되어 있다.
 * updater가 관리하는 모든 산출물과 두 Cargo dependency graph가 같은 rhwp를 사용한다.
-* 변경된 counterpart를 검토했고 필요한 호환 수정이 HOP-owned 경계 안에 있다.
+* 변경된 counterpart와 private input을 검토했고 필요한 호환 수정이 HOP-owned 경계 안에 있다.
 * 자동 검증과 필요한 플랫폼 smoke test 결과가 작업 기록에 남아 있다.
 * `third_party/rhwp` 내부는 clean이고 의도하지 않은 생성물이나 임시 파일이 없다.

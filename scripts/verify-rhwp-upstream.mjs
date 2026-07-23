@@ -72,7 +72,7 @@ export async function verifyRhwpUpstream() {
   assert.deepEqual(
     overrideManifest.upstream,
     await buildStudioOverrideBaseline(overrideManifest, lock),
-    'studio override counterpart baseline must match the pinned upstream',
+    'studio compatibility baseline must match the pinned upstream',
   );
   for (const relativePath of studioMirroredAssetPaths) {
     assert.deepEqual(

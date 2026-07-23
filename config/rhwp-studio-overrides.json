@@ -18,6 +18,14 @@
       "view/canvas-view": "35d174a281ec4fe6c64b54d33a59855a32717fabc067276817cf94f2341338d3",
       "view/ruler": "43e4284348662ba6164771c3597a33a619f18a85471b677886c55284bca70dbb"
     },
+    "privateInputs": {
+      "engine/cursor": "b13155d6be476e170a3c38bde86a5bd1474a99c0911a509c444739fb0422f399",
+      "engine/history": "140084745f4556eb9c1bdf2d6c5d67a1062cd4ee6eecebd1c37a33581c7892f4",
+      "engine/input-handler": "708df121ef0e157e96472421b5250a126757b75b8e52a47ecb8bd4c15d8dc1fe",
+      "styles/dialogs.css": "f30eb02c527bf4897769b8d04fe46c083d06581bcfc39ff9c2015386466c8d60",
+      "styles/menu-bar.css": "b0e97c597be9db0d76bee4778a2481dfb799601305ffff9155c537d68bdee98b",
+      "ui/context-menu": "5ab0dee205a542a9c861a3512cf11fb55f743d679ef07ecb7e3662a09826460c"
+    },
     "assets": {
       "public/images/icon_small_ko_dark.svg": "9d02ea0b8c1d399a89290d97613759826f19f3e3f392b6d79dcf6109e7e15fa6"
     }

@@ -30,6 +30,14 @@ export const vendoredArtifactNames = [
   'LICENSE',
 ];
 export const studioMirroredAssetPaths = ['public/images/icon_small_ko_dark.svg'];
+export const studioPrivateInputIds = [
+  'engine/cursor',
+  'engine/history',
+  'engine/input-handler',
+  'styles/dialogs.css',
+  'styles/menu-bar.css',
+  'ui/context-menu',
+];
 
 export async function readJson(path) {
   return JSON.parse(await readFile(path, 'utf8'));
@@ -98,6 +106,15 @@ export async function artifactMetadata(path) {
   };
 }
 
+export async function canonicalTextSha256(path) {
+  const text = (await readFile(path, 'utf8')).replaceAll('\r\n', '\n');
+  return createHash('sha256').update(text).digest('hex');
+}
+
+export function studioSourceRelativePath(id) {
+  return id.endsWith('.css') ? id : `${id}.ts`;
+}
+
 export function repoRelativePath(path) {
   return relative(repoRoot, path).replaceAll('\\', '/');
 }
@@ -123,19 +140,40 @@ export async function buildStudioOverrideBaseline(manifest, upstream) {
   const counterparts = {};
   for (const entry of manifest.overrides) {
     if (entry.strategy !== 'extension' && entry.strategy !== 'fork') continue;
-    const relativePath = entry.id.endsWith('.css') ? entry.id : `${entry.id}.ts`;
-    counterparts[entry.id] = (await artifactMetadata(join(upstreamStudioDir, relativePath))).sha256;
+    const relativePath = studioSourceRelativePath(entry.id);
+    counterparts[entry.id] = await canonicalTextSha256(join(upstreamStudioDir, relativePath));
   }
   const assets = {};
   for (const relativePath of studioMirroredAssetPaths) {
     assets[relativePath] = (await artifactMetadata(join(upstreamDir, 'rhwp-studio', relativePath))).sha256;
   }
+  const privateInputs = {};
+  for (const id of studioPrivateInputIds) {
+    privateInputs[id] = await canonicalTextSha256(join(upstreamStudioDir, studioSourceRelativePath(id)));
+  }
   return {
     version: upstream.version,
     commit: upstream.commit,
     counterparts,
+    privateInputs,
     assets,
   };
+}
+
+export function changedStudioInputs(previous, next) {
+  const changed = [];
+  for (const field of ['counterparts', 'privateInputs', 'assets']) {
+    const before = previous.upstream?.[field] ?? {};
+    const after = next.upstream?.[field] ?? {};
+    const ids = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const id of ids) {
+      if (before[id] === after[id]) continue;
+      if (field === 'assets') changed.push(`asset:${id}`);
+      else if (field === 'privateInputs') changed.push(`private-input:${id}`);
+      else changed.push(id);
+    }
+  }
+  return changed.sort();
 }
 
 export function currentUpstreamCommit() {

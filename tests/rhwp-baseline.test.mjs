@@ -124,6 +124,14 @@ test('HOP defers editor engine and table command behavior to upstream rhwp', asy
 
   assert.ok(!overrideIds.some((id) => id.startsWith('engine/')));
   assert.ok(!overrideIds.includes('command/commands/table'));
+  assert.deepEqual(Object.keys(manifest.upstream.privateInputs).sort(), [
+    'engine/cursor',
+    'engine/history',
+    'engine/input-handler',
+    'styles/dialogs.css',
+    'styles/menu-bar.css',
+    'ui/context-menu',
+  ]);
 
   for (const path of [
     'apps/studio-host/src/engine/input-handler.ts',

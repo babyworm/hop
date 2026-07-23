@@ -22,8 +22,9 @@ studio host는 Vite alias로 upstream `rhwp-studio`를 가져오고, HOP가 반�
 `config/rhwp-studio-overrides.json`은 모든 shadow alias의 검토 가능한 목록이다. 각 항목은 upstream
 구현을 감싸는 `extension`, 의도적으로 유지하는 `fork`, HOP 전용 `contribution` 중 하나로 분류하고
 존재 이유를 기록한다. 경계 테스트는 누락·중복과 사라진 upstream counterpart를 차단한다.
-manifest의 counterpart SHA-256 baseline은 extension/fork 대상 upstream 파일의 변경도 감지한다.
-업데이트 명령은 바뀐 counterpart 목록을 출력하므로 해당 adapter나 fork를 우선 리뷰한다.
+manifest의 SHA-256 baseline은 extension/fork counterpart와 HOP adapter가 의존하는 private upstream
+입력의 변경을 감지한다. 업데이트 명령은 바뀐 counterpart와 private input 목록을 출력하므로 해당
+adapter나 fork를 우선 리뷰한다.
 upstream CSS가 직접 참조하는 mirrored public asset도 같은 baseline과 검증 절차로 동기화한다.
 
 제품 TypeScript는 `apps/studio-host/src/upstream` port를 통해서만 upstream API를 사용한다. 명령군은

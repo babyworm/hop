@@ -11,10 +11,13 @@ import {
   cargoPatchTomlPattern,
   cargoLockHasPatchSource,
   cargoLockPackageVersion,
+  canonicalTextSha256,
+  changedStudioInputs,
   normalizeGitSource,
   parsePackageVersion,
   parseRustToolchain,
   repoRelativePath,
+  studioSourceRelativePath,
   tomlSection,
   vendoredArtifactNames,
 } from '../scripts/lib/rhwp-upstream.mjs';
@@ -69,6 +72,34 @@ test('computes artifact provenance from bytes', async () => {
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('canonicalizes tracked text hashes across LF and CRLF checkouts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'hop-rhwp-text-hash-'));
+  try {
+    const lfPath = join(directory, 'lf.ts');
+    const crlfPath = join(directory, 'crlf.ts');
+    await writeFile(lfPath, 'const value = 1;\n');
+    await writeFile(crlfPath, 'const value = 1;\r\n');
+
+    const expected = (await artifactMetadata(lfPath)).sha256;
+    assert.equal(await canonicalTextSha256(lfPath), expected);
+    assert.equal(await canonicalTextSha256(crlfPath), expected);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('preserves explicit Studio source extensions for private inputs', () => {
+  assert.equal(studioSourceRelativePath('engine/history'), 'engine/history.ts');
+  assert.equal(studioSourceRelativePath('styles/menu-bar.css'), 'styles/menu-bar.css');
+});
+
+test('reports changed private upstream inputs explicitly', () => {
+  const previous = { upstream: { privateInputs: { 'engine/history': 'before' } } };
+  const next = { upstream: { privateInputs: { 'engine/history': 'after' } } };
+
+  assert.deepEqual(changedStudioInputs(previous, next), ['private-input:engine/history']);
 });
 
 test('requires the exact Cargo patch repository and revision independent of TOML field order', () => {
