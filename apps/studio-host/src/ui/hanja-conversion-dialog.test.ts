@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { advanceDocumentGeneration } from '../core/document-generation';
 import { openHanjaConversionDialog } from './hanja-conversion-dialog';
 
 const hanjaDialogCss = readNodeTextFile(
@@ -17,6 +18,7 @@ class FakeElement {
   private attributes = new Map<string, string>();
   private listeners = new Map<string, Array<(event: FakeEvent) => void>>();
   readonly scrollIntoViewCalls: ScrollIntoViewOptions[] = [];
+  focusCalls = 0;
 
   constructor(private readonly owner?: FakeDocument, readonly tagName = 'DIV') {
     this.tabIndex = tagName === 'BUTTON' ? 0 : -1;
@@ -59,6 +61,7 @@ class FakeElement {
   }
 
   focus(): void {
+    this.focusCalls += 1;
     if (this.owner) this.owner.activeElement = this;
   }
 
@@ -93,10 +96,32 @@ class FakeEvent {
   stopPropagation(): void { this.propagationStopped = true; }
 }
 
+class FakeWindow {
+  private listeners = new Map<string, Array<(event: FakeEvent) => void>>();
+
+  addEventListener(type: string, listener: (event: FakeEvent) => void): void {
+    const listeners = this.listeners.get(type) ?? [];
+    listeners.push(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  removeEventListener(type: string, listener: (event: FakeEvent) => void): void {
+    const listeners = this.listeners.get(type) ?? [];
+    const index = listeners.indexOf(listener);
+    if (index >= 0) listeners.splice(index, 1);
+  }
+
+  dispatch(type: string, event: FakeEvent): void {
+    this.listeners.get(type)?.forEach((listener) => listener(event));
+  }
+}
+
 class FakeDocument {
   body = new FakeElement(this);
   activeElement: FakeElement = this.body;
   private listeners = new Map<string, Array<(event: FakeEvent) => void>>();
+
+  constructor(private readonly defaultView: FakeWindow) {}
 
   createElement(tagName = 'div'): FakeElement {
     return new FakeElement(this, tagName.toUpperCase());
@@ -119,23 +144,30 @@ class FakeDocument {
     event.key = key;
     event.target = target;
     event.shiftKey = shiftKey;
-    this.listeners.get('keydown')?.forEach((listener) => listener(event));
+    this.defaultView.dispatch('keydown', event);
+    if (!event.propagationStopped) {
+      this.listeners.get('keydown')?.forEach((listener) => listener(event));
+    }
     return event;
   }
 }
 
 describe('openHanjaConversionDialog', () => {
   let fakeDocument: FakeDocument;
+  let fakeWindow: FakeWindow;
 
   beforeEach(() => {
-    fakeDocument = new FakeDocument();
+    fakeWindow = new FakeWindow();
+    fakeDocument = new FakeDocument(fakeWindow);
     (globalThis as Record<string, unknown>).document = fakeDocument;
     (globalThis as Record<string, unknown>).HTMLElement = FakeElement;
+    (globalThis as Record<string, unknown>).window = fakeWindow;
   });
 
   afterEach(() => {
     delete (globalThis as Record<string, unknown>).document;
     delete (globalThis as Record<string, unknown>).HTMLElement;
+    delete (globalThis as Record<string, unknown>).window;
   });
 
   it('renders word 훈음 and confirms the selected word with Enter', async () => {
@@ -220,6 +252,35 @@ describe('openHanjaConversionDialog', () => {
     });
 
     expect(fakeDocument.key('Escape').propagationStopped).toBe(true);
+    await expect(pending).resolves.toBeNull();
+  });
+
+  it('blocks F11 before an earlier document capture handler can mutate the editor', async () => {
+    let editorHandledF11 = false;
+    fakeDocument.addEventListener('keydown', (event) => {
+      if (event.key === 'F11') editorHandledF11 = true;
+    });
+    const pending = openWordDialog();
+
+    const event = fakeDocument.key('F11');
+
+    expect(editorHandledF11).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    fakeDocument.key('Escape');
+    await pending;
+  });
+
+  it('cancels when the primary document generation advances', async () => {
+    const previouslyFocused = fakeDocument.createElement('textarea');
+    fakeDocument.body.appendChild(previouslyFocused);
+    previouslyFocused.focus();
+    const pending = openWordDialog();
+
+    advanceDocumentGeneration();
+
+    expect(fakeDocument.body.children.length).toBe(1);
+    expect(fakeDocument.body.children[0]).toBe(previouslyFocused);
+    expect(previouslyFocused.focusCalls).toBe(1);
     await expect(pending).resolves.toBeNull();
   });
 

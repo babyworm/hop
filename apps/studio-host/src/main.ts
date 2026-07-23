@@ -12,6 +12,7 @@ import {
   CellSelectionRenderer,
   getInputHandlerShortcutCaptureState,
   InputHandler,
+  installRecoveredCommandHistoryGuard,
   TableObjectRenderer,
   TableResizeRenderer,
 } from '@/upstream/editor';
@@ -123,6 +124,7 @@ async function initialize(): Promise<void> {
       canvasView.getVirtualScroll(),
       canvasView.getViewportManager(),
     );
+    installRecoveredCommandHistoryGuard(inputHandler);
     inputHandler.setEditMode(commandRuntime.getEditMode());
 
     toolbar = new Toolbar(document.getElementById('style-bar')!, wasm, eventBus, dispatcher);

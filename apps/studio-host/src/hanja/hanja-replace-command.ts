@@ -1,11 +1,16 @@
 import type { DocumentPosition, WasmBridge } from '@/upstream/core';
 import type { EditCommand, TextMutationEffects } from '../upstream/editor';
 import {
-  DeleteTextCommand,
   IMMEDIATE_TEXT_MUTATION_EFFECTS,
-  InsertTextCommand,
   NO_TEXT_MUTATION_EFFECTS,
+  RecoveredEditCommandError,
 } from '../upstream/editor';
+import {
+  deleteHanjaTextImmediate,
+  getHanjaParagraphLength,
+  insertHanjaTextImmediate,
+  readHanjaText,
+} from './hanja-editor-text-access';
 
 type CharShapeRun = { start: number; end: number; charShapeId: number };
 type StyleRuns = { readonly original: readonly CharShapeRun[]; readonly replacement: readonly CharShapeRun[] };
@@ -14,8 +19,12 @@ type TextStyleTransition = {
   readonly sourceText: string; readonly sourceLength: number;
   readonly sourceRuns: readonly CharShapeRun[]; readonly targetText: string;
   readonly targetLength: number; readonly targetRuns: readonly CharShapeRun[];
-  readonly retry: boolean;
+  readonly preserveHistoryOnRecovery: boolean;
 };
+
+type TransitionDocumentState = 'source' | 'staged' | 'target' | 'unknown';
+
+const MAX_RECOVERY_STEPS = 6;
 
 export class HanjaReplaceCommand implements EditCommand {
   readonly type = 'replaceText';
@@ -42,7 +51,7 @@ export class HanjaReplaceCommand implements EditCommand {
       targetText: this.replacementText,
       targetLength: characterCount(this.replacementText),
       targetRuns: runs.replacement,
-      retry: this.state === 'undone',
+      preserveHistoryOnRecovery: this.state === 'undone',
     } satisfies TextStyleTransition;
 
     this.effects = NO_TEXT_MUTATION_EFFECTS;
@@ -62,7 +71,7 @@ export class HanjaReplaceCommand implements EditCommand {
       targetText: this.originalText,
       targetLength: this.originalLength,
       targetRuns: this.styleRuns.original,
-      retry: true,
+      preserveHistoryOnRecovery: true,
     } satisfies TextStyleTransition;
 
     this.effects = NO_TEXT_MUTATION_EFFECTS;
@@ -119,13 +128,10 @@ function applyTransition(
     return applyTransitionOnce(wasm, position, transition);
   } catch (error) {
     if (!(error instanceof RecoveredTransitionError)) throw error;
-    if (!transition.retry) throw error.operationError;
-  }
-  try {
-    return applyTransitionOnce(wasm, position, transition);
-  } catch (error) {
-    if (error instanceof RecoveredTransitionError) throw error.operationError;
-    throw error;
+    if (transition.preserveHistoryOnRecovery) {
+      throw new RecoveredEditCommandError(error.operationError);
+    }
+    throw error.operationError;
   }
 }
 
@@ -134,38 +140,171 @@ function applyTransitionOnce(
   position: DocumentPosition,
   transition: TextStyleTransition,
 ): TextMutationEffects {
-  const deletion = new DeleteTextCommand(
+  const sourceParagraphLength = getHanjaParagraphLength(wasm, position);
+  if (!transitionStateMatches(
+    wasm,
     position,
-    transition.sourceLength,
-    'forward',
-    transition.sourceText,
-  );
-  const insertion = new InsertTextCommand(position, transition.targetText);
-  let sourceDeleted = false;
-  let targetInserted = false;
+    transition,
+    sourceParagraphLength,
+    'source',
+    transition.sourceRuns,
+  )) {
+    throw new Error('변환할 원문 상태가 예상과 다릅니다.');
+  }
   try {
-    deletion.execute(wasm);
-    sourceDeleted = true;
-    insertion.execute(wasm);
-    targetInserted = true;
-    applyRuns(wasm, position, transition.targetRuns);
-    return mergeEffects(
-      deletion.consumeTextMutationEffects(),
-      insertion.consumeTextMutationEffects(),
+    insertHanjaTextImmediate(
+      wasm,
+      advancedPosition(position, transition.sourceLength),
+      transition.targetText,
     );
-  } catch (error) {
-    if (targetInserted) {
-      new DeleteTextCommand(
-        position,
-        transition.targetLength,
-        'forward',
-        transition.targetText,
-      ).execute(wasm);
+    deleteHanjaTextImmediate(wasm, position, transition.sourceLength);
+    applyRuns(wasm, position, transition.targetRuns);
+    if (!transitionStateMatches(
+      wasm,
+      position,
+      transition,
+      sourceParagraphLength,
+      'target',
+      transition.targetRuns,
+    )) {
+      throw new Error('한자 변환 결과를 확인할 수 없습니다.');
     }
-    if (sourceDeleted) new InsertTextCommand(position, transition.sourceText).execute(wasm);
-    applyRuns(wasm, position, transition.sourceRuns);
+    return IMMEDIATE_TEXT_MUTATION_EFFECTS;
+  } catch (error) {
+    restoreTransitionSource(wasm, position, transition, sourceParagraphLength, error);
     throw new RecoveredTransitionError(error);
   }
+}
+
+function restoreTransitionSource(
+  wasm: WasmBridge,
+  position: DocumentPosition,
+  transition: TextStyleTransition,
+  sourceParagraphLength: number,
+  operationError: unknown,
+): void {
+  let lastRecoveryError: unknown;
+  for (let step = 0; step < MAX_RECOVERY_STEPS; step += 1) {
+    const state = transitionDocumentState(wasm, position, transition, sourceParagraphLength);
+    try {
+      if (state === 'staged') {
+        deleteHanjaTextImmediate(
+          wasm,
+          advancedPosition(position, transition.sourceLength),
+          transition.targetLength,
+        );
+      } else if (state === 'target') {
+        insertHanjaTextImmediate(wasm, position, transition.sourceText);
+      } else if (state === 'source') {
+        applyRunsRecoverably(wasm, position, transition.sourceRuns);
+      } else {
+        throw new Error('복구할 문서 상태를 판별할 수 없습니다.');
+      }
+    } catch (error) {
+      lastRecoveryError = error;
+    }
+
+    if (transitionStateMatches(
+      wasm,
+      position,
+      transition,
+      sourceParagraphLength,
+      'source',
+      transition.sourceRuns,
+    )) return;
+  }
+
+  throw new AggregateError(
+    [operationError, lastRecoveryError].filter((error) => error !== undefined),
+    '한자 변환 실패 후 문서 상태를 복원하지 못했습니다.',
+  );
+}
+
+function transitionStateMatches(
+  wasm: WasmBridge,
+  position: DocumentPosition,
+  transition: TextStyleTransition,
+  sourceParagraphLength: number,
+  expectedState: 'source' | 'target',
+  expectedRuns: readonly CharShapeRun[],
+): boolean {
+  try {
+    return transitionDocumentState(wasm, position, transition, sourceParagraphLength) === expectedState &&
+      charShapeRunsMatch(wasm, position, expectedRuns);
+  } catch {
+    return false;
+  }
+}
+
+function transitionDocumentState(
+  wasm: WasmBridge,
+  position: DocumentPosition,
+  transition: TextStyleTransition,
+  sourceParagraphLength: number,
+): TransitionDocumentState {
+  const paragraphLength = getHanjaParagraphLength(wasm, position);
+  const targetParagraphLength = sourceParagraphLength - transition.sourceLength +
+    transition.targetLength;
+  if (
+    paragraphLength === sourceParagraphLength &&
+    readHanjaText(wasm, position, transition.sourceLength) === transition.sourceText
+  ) return 'source';
+  if (
+    paragraphLength === sourceParagraphLength + transition.targetLength &&
+    readHanjaText(wasm, position, transition.sourceLength) === transition.sourceText &&
+    readHanjaText(
+      wasm,
+      advancedPosition(position, transition.sourceLength),
+      transition.targetLength,
+    ) === transition.targetText
+  ) return 'staged';
+  if (
+    paragraphLength === targetParagraphLength &&
+    readHanjaText(wasm, position, transition.targetLength) === transition.targetText
+  ) return 'target';
+  return 'unknown';
+}
+
+function charShapeRunsMatch(
+  wasm: WasmBridge,
+  position: DocumentPosition,
+  runs: readonly CharShapeRun[],
+): boolean {
+  return runs.every((run) => charShapeRunMatches(wasm, position, run));
+}
+
+function charShapeRunMatches(
+  wasm: WasmBridge,
+  position: DocumentPosition,
+  run: CharShapeRun,
+): boolean {
+  for (let index = run.start; index < run.end; index += 1) {
+    if (charShapeIdAt(wasm, position, index) !== run.charShapeId) return false;
+  }
+  return true;
+}
+
+function charShapeIdAt(
+  wasm: WasmBridge,
+  position: DocumentPosition,
+  relativeOffset: number,
+): number | undefined {
+  const offset = position.charOffset + relativeOffset;
+  if (position.parentParaIndex === undefined) {
+    return wasm.getCharPropertiesAt(
+      position.sectionIndex,
+      position.paragraphIndex,
+      offset,
+    ).charShapeId;
+  }
+  return wasm.getCellCharPropertiesAt(
+    position.sectionIndex,
+    position.parentParaIndex,
+    position.controlIndex!,
+    position.cellIndex!,
+    position.cellParaIndex!,
+    offset,
+  ).charShapeId;
 }
 
 function captureCharShapeIds(
@@ -230,37 +369,48 @@ function compressRuns(ids: number[]): CharShapeRun[] {
 
 function applyRuns(wasm: WasmBridge, position: DocumentPosition, runs: readonly CharShapeRun[]): void {
   for (const run of runs) {
-    const start = position.charOffset + run.start;
-    const end = position.charOffset + run.end;
-    if (position.parentParaIndex === undefined) {
-      wasm.setCharShapeId(
-        position.sectionIndex,
-        position.paragraphIndex,
-        start,
-        end,
-        run.charShapeId,
-      );
-    } else {
-      wasm.setCharShapeIdInCell(
-        position.sectionIndex,
-        position.parentParaIndex,
-        position.controlIndex!,
-        position.cellIndex!,
-        position.cellParaIndex!,
-        start,
-        end,
-        run.charShapeId,
-      );
+    applyRun(wasm, position, run);
+  }
+}
+
+function applyRunsRecoverably(
+  wasm: WasmBridge,
+  position: DocumentPosition,
+  runs: readonly CharShapeRun[],
+): void {
+  for (const run of runs) {
+    if (charShapeRunMatches(wasm, position, run)) continue;
+    try {
+      applyRun(wasm, position, run);
+    } catch (error) {
+      if (!charShapeRunMatches(wasm, position, run)) throw error;
     }
   }
 }
 
-function mergeEffects(first: TextMutationEffects, second: TextMutationEffects): TextMutationEffects {
-  return {
-    deferredPagination: first.deferredPagination || second.deferredPagination,
-    cellFlowChanged: first.cellFlowChanged || second.cellFlowChanged,
-    paginationCompleted: first.paginationCompleted || second.paginationCompleted,
-  };
+function applyRun(wasm: WasmBridge, position: DocumentPosition, run: CharShapeRun): void {
+  const start = position.charOffset + run.start;
+  const end = position.charOffset + run.end;
+  if (position.parentParaIndex === undefined) {
+    wasm.setCharShapeId(
+      position.sectionIndex,
+      position.paragraphIndex,
+      start,
+      end,
+      run.charShapeId,
+    );
+  } else {
+    wasm.setCharShapeIdInCell(
+      position.sectionIndex,
+      position.parentParaIndex,
+      position.controlIndex!,
+      position.cellIndex!,
+      position.cellParaIndex!,
+      start,
+      end,
+      run.charShapeId,
+    );
+  }
 }
 
 function advancedPosition(position: DocumentPosition, count: number): DocumentPosition {

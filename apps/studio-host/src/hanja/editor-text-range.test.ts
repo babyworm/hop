@@ -1,27 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { advanceDocumentGeneration, currentDocumentGeneration } from '../core/document-generation';
 import {
-  findHangulWordRange,
   findConvertibleWordRange,
   isConversionSourceCurrent,
   readConversionSource,
   replaceConversionSource,
 } from './editor-text-range';
-
-describe('findHangulWordRange', () => {
-  it('finds the word on either side of a caret boundary', () => {
-    expect(findHangulWordRange('문서 학교 편집', 5)).toEqual({ start: 3, end: 5, text: '학교' });
-    expect(findHangulWordRange('문서 학교 편집', 3)).toEqual({ start: 3, end: 5, text: '학교' });
-  });
-
-  it('returns null when the caret is not adjacent to Hangul', () => {
-    expect(findHangulWordRange('HOP 123', 4)).toBeNull();
-  });
-
-  it('uses document character offsets when supplementary-plane text precedes the word', () => {
-    expect(findHangulWordRange('𢠵 학교', 4)).toEqual({ start: 2, end: 4, text: '학교' });
-  });
-});
 
 describe('findConvertibleWordRange', () => {
   it('finds a contiguous Hanja run and records its conversion direction', () => {
@@ -51,8 +35,9 @@ describe('editor conversion range', () => {
         end: { sectionIndex: 0, paragraphIndex: 2, charOffset: 5 },
       }),
       getCursorPosition: vi.fn(),
+      cursor: supportedCursor(),
     };
-    const wasm = { getTextRange: vi.fn(() => '학교') };
+    const wasm = bodyWasm('문서 학교 편집');
 
     const source = readConversionSource({ wasm, getInputHandler: () => inputHandler } as never);
 
@@ -73,9 +58,10 @@ describe('editor conversion range', () => {
         end: { sectionIndex: 0, paragraphIndex: 0, charOffset: 2 },
       }),
       getCursorPosition: vi.fn(),
+      cursor: supportedCursor(),
     };
     const source = readConversionSource({
-      wasm: { getTextRange: () => decomposed },
+      wasm: bodyWasm(decomposed),
       getInputHandler: () => inputHandler,
     } as never);
 
@@ -89,11 +75,17 @@ describe('editor conversion range', () => {
     };
     const wasm = {
       getCellParagraphLength: vi.fn(() => 5),
+      getLineInfoInCell: vi.fn(() => ({ charEnd: 5 })),
       getTextInCell: vi.fn(() => '학교 편집'),
+      getFieldInfoAt: vi.fn(() => ({ inField: false })),
     };
     const source = readConversionSource({
       wasm,
-      getInputHandler: () => ({ getSelection: () => null, getCursorPosition: () => position }),
+      getInputHandler: () => ({
+        getSelection: () => null,
+        getCursorPosition: () => position,
+        cursor: supportedCursor(),
+      }),
     } as never);
 
     expect(source).toMatchObject({ text: '학교', start: { charOffset: 0 }, end: { charOffset: 2 } });
@@ -110,16 +102,21 @@ describe('editor conversion range', () => {
 
     expect(() => readConversionSource({
       wasm: {},
-      getInputHandler: () => ({ getSelection: () => null, getCursorPosition: () => position }),
+      getInputHandler: () => ({
+        getSelection: () => null,
+        getCursorPosition: () => position,
+        cursor: supportedCursor(),
+      }),
     } as never)).toThrow(/중첩 표/);
   });
 
   it('rejects a pending conversion after the document generation changes', () => {
     const services = {
-      wasm: { getParagraphLength: () => 2, getTextRange: () => '학교' },
+      wasm: bodyWasm('학교'),
       getInputHandler: () => ({
         getSelection: () => null,
         getCursorPosition: () => ({ sectionIndex: 0, paragraphIndex: 0, charOffset: 2 }),
+        cursor: supportedCursor(),
       }),
     };
     const source = readConversionSource(services as never);
@@ -136,6 +133,7 @@ describe('editor conversion range', () => {
         getSelection: () => null,
         getCursorPosition: vi.fn(),
         cursor: {
+          clearSelection: vi.fn(),
           isInHeaderFooter: () => true,
           isInFootnote: () => false,
         },
@@ -145,15 +143,29 @@ describe('editor conversion range', () => {
     expect(() => readConversionSource(services as never)).toThrow(/머리말/);
   });
 
+  it('rejects conversion text inside a ClickHere field', () => {
+    const wasm = {
+      ...bodyWasm('학교'),
+      getFieldInfoAt: () => ({ inField: true, fieldType: 'clickhere' }),
+    };
+
+    expect(() => readConversionSource({
+      wasm,
+      getInputHandler: () => ({
+        getSelection: () => null,
+        getCursorPosition: () => ({ sectionIndex: 0, paragraphIndex: 0, charOffset: 1 }),
+        cursor: supportedCursor(),
+      }),
+    } as never)).toThrow(/누름틀/);
+  });
+
   it('derives the current word when no selection exists', () => {
     const inputHandler = {
       getSelection: () => null,
       getCursorPosition: () => ({ sectionIndex: 0, paragraphIndex: 1, charOffset: 5 }),
+      cursor: supportedCursor(),
     };
-    const wasm = {
-      getParagraphLength: () => 8,
-      getTextRange: () => '문서 학교 편집',
-    };
+    const wasm = bodyWasm('문서 학교 편집');
 
     expect(readConversionSource({ wasm, getInputHandler: () => inputHandler } as never)).toMatchObject({
       text: '학교',
@@ -166,11 +178,9 @@ describe('editor conversion range', () => {
     const inputHandler = {
       getSelection: () => null,
       getCursorPosition: () => ({ sectionIndex: 0, paragraphIndex: 1, charOffset: 5 }),
+      cursor: supportedCursor(),
     };
-    const wasm = {
-      getParagraphLength: () => 8,
-      getTextRange: () => '문서 學校 편집',
-    };
+    const wasm = bodyWasm('문서 學校 편집');
 
     expect(readConversionSource({ wasm, getInputHandler: () => inputHandler } as never)).toMatchObject({
       text: '學校',
@@ -178,6 +188,95 @@ describe('editor conversion range', () => {
       start: { charOffset: 3 },
       end: { charOffset: 5 },
     });
+  });
+
+  it('rejects a body paragraph with inline controls before reading selected text', () => {
+    const getTextRange = vi.fn();
+
+    expect(() => readConversionSource({
+      wasm: {
+        getParagraphLength: () => 4,
+        getLineInfo: () => ({ charEnd: 5 }),
+        getTextRange,
+      },
+      getInputHandler: () => ({
+        getSelection: () => ({
+          start: { sectionIndex: 0, paragraphIndex: 0, charOffset: 1 },
+          end: { sectionIndex: 0, paragraphIndex: 0, charOffset: 3 },
+        }),
+        getCursorPosition: vi.fn(),
+        cursor: supportedCursor(),
+      }),
+    } as never)).toThrow(/개체/);
+    expect(getTextRange).not.toHaveBeenCalled();
+  });
+
+  it('rejects a selection longer than the conversion limit before reading document text', () => {
+    const getTextRange = vi.fn();
+
+    expect(() => readConversionSource({
+      wasm: {
+        getParagraphLength: () => 100,
+        getLineInfo: () => ({ charEnd: 100 }),
+        getTextRange,
+      },
+      getInputHandler: () => ({
+        getSelection: () => ({
+          start: { sectionIndex: 0, paragraphIndex: 0, charOffset: 0 },
+          end: { sectionIndex: 0, paragraphIndex: 0, charOffset: 65 },
+        }),
+        getCursorPosition: vi.fn(),
+        cursor: supportedCursor(),
+      }),
+    } as never)).toThrow(/64/);
+    expect(getTextRange).not.toHaveBeenCalled();
+  });
+
+  it('reads only a bounded body window around the caret', () => {
+    const paragraph = `${'가'.repeat(900)} 학교 ${'나'.repeat(900)}`;
+    const characters = Array.from(paragraph);
+    const getTextRange = vi.fn(
+      (_section: number, _paragraph: number, offset: number, count: number) =>
+        characters.slice(offset, offset + count).join(''),
+    );
+    const cursorOffset = 903;
+
+    const source = readConversionSource({
+      wasm: {
+        getParagraphLength: () => characters.length,
+        getLineInfo: () => ({ charEnd: characters.length }),
+        getTextRange,
+        getFieldInfoAt: () => ({ inField: false }),
+      },
+      getInputHandler: () => ({
+        getSelection: () => null,
+        getCursorPosition: () => ({ sectionIndex: 0, paragraphIndex: 0, charOffset: cursorOffset }),
+        cursor: supportedCursor(),
+      }),
+    } as never);
+
+    expect(source.text).toBe('학교');
+    expect(getTextRange).toHaveBeenCalledOnce();
+    expect(getTextRange.mock.calls[0]?.[3]).toBeLessThanOrEqual(130);
+  });
+
+  it('fails closed when the pinned cursor or logical-length capability is unavailable', () => {
+    expect(() => readConversionSource({
+      wasm: bodyWasm('학교'),
+      getInputHandler: () => ({
+        getSelection: () => null,
+        getCursorPosition: () => ({ sectionIndex: 0, paragraphIndex: 0, charOffset: 1 }),
+      }),
+    } as never)).toThrow(/지원하지/);
+
+    expect(() => readConversionSource({
+      wasm: { getParagraphLength: () => 2, getTextRange: () => '학교' },
+      getInputHandler: () => ({
+        getSelection: () => null,
+        getCursorPosition: () => ({ sectionIndex: 0, paragraphIndex: 0, charOffset: 1 }),
+        cursor: supportedCursor(),
+      }),
+    } as never)).toThrow(/지원하지/);
   });
 
   it('applies a replacement as one undo-aware command and clears a selection', () => {
@@ -189,7 +288,7 @@ describe('editor conversion range', () => {
         start: { sectionIndex: 0, paragraphIndex: 0, charOffset: 0 },
         end: { sectionIndex: 0, paragraphIndex: 0, charOffset: 2 },
       }),
-      cursor: { clearSelection },
+      cursor: { ...supportedCursor(), clearSelection },
     };
     const source = {
       text: '학교',
@@ -217,7 +316,7 @@ describe('editor conversion range', () => {
     const clearSelection = vi.fn();
     const inputHandler = {
       executeOperation: vi.fn(() => { throw new Error('injected operation failure'); }),
-      cursor: { clearSelection },
+      cursor: { ...supportedCursor(), clearSelection },
     };
     const source = {
       text: '학교',
@@ -237,3 +336,22 @@ describe('editor conversion range', () => {
     expect(clearSelection).not.toHaveBeenCalled();
   });
 });
+
+function supportedCursor() {
+  return {
+    clearSelection: vi.fn(),
+    isInHeaderFooter: () => false,
+    isInFootnote: () => false,
+  };
+}
+
+function bodyWasm(text: string) {
+  const characters = Array.from(text);
+  return {
+    getParagraphLength: () => characters.length,
+    getLineInfo: () => ({ charEnd: characters.length }),
+    getTextRange: (_section: number, _paragraph: number, offset: number, count: number) =>
+      characters.slice(offset, offset + count).join(''),
+    getFieldInfoAt: () => ({ inField: false }),
+  };
+}

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WasmBridge } from '@/upstream/core';
 import { CommandHistory } from '@upstream/engine/history';
+import { installRecoveredCommandHistoryGuard } from '../upstream/editor';
 import { HanjaReplaceCommand } from './hanja-replace-command';
 
 const BODY_POSITION = { sectionIndex: 0, paragraphIndex: 0, charOffset: 1 };
@@ -32,7 +33,7 @@ describe('HanjaReplaceCommand', () => {
     expect(wasm.state()).toEqual({ text: 'A學校B', shapes: [0, 7, 8, 0] });
   });
 
-  it('restores text and character shapes when insertion fails after deletion', () => {
+  it('leaves text and character shapes unchanged when insertion fails before mutation', () => {
     const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
     const command = new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校');
     wasm.failNextInsert = true;
@@ -40,6 +41,70 @@ describe('HanjaReplaceCommand', () => {
     expect(() => command.execute(wasm as never)).toThrow('injected insert failure');
 
     expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
+  });
+
+  it.each([
+    ['body paragraph', BODY_POSITION],
+    ['flat table cell', CELL_POSITION],
+  ])('restores a %s when insertion mutates before throwing', (_, position) => {
+    const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
+    const command = new HanjaReplaceCommand(position, '학교', '학교', 2, '學校');
+    wasm.failAfterInserting('學校', 1);
+
+    expect(() => command.execute(wasm as never)).toThrow('injected post-insert failure');
+    expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
+  });
+
+  it.each([
+    ['body paragraph', BODY_POSITION],
+    ['flat table cell', CELL_POSITION],
+  ])('restores a %s when deletion mutates before throwing', (_, position) => {
+    const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
+    const command = new HanjaReplaceCommand(position, '학교', '학교', 2, '學校');
+    wasm.failAfterDeleting(1);
+
+    expect(() => command.execute(wasm as never)).toThrow('injected post-delete failure');
+    expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
+  });
+
+  it('verifies recovery when restoring source text mutates before throwing', () => {
+    const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
+    const command = new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校');
+    wasm.failNextStyle = true;
+    wasm.failAfterInserting('학교', 1);
+
+    expect(() => command.execute(wasm as never)).toThrow('injected style failure');
+    expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
+  });
+
+  it('verifies recovery when removing replacement text mutates before throwing', () => {
+    const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
+    const command = new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校');
+    wasm.failNextStyle = true;
+    wasm.failAfterDeleting(2);
+
+    expect(() => command.execute(wasm as never)).toThrow('injected style failure');
+    expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
+  });
+
+  it('preserves operation and recovery errors without claiming an unrecovered edit is safe', () => {
+    const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
+    const command = new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校');
+    wasm.failNextStyle = true;
+    wasm.failBeforeDeletingFrom(2);
+
+    let caught: unknown;
+    try {
+      command.execute(wasm as never);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(AggregateError);
+    expect((caught as AggregateError).errors).toEqual([
+      expect.objectContaining({ message: 'injected style failure' }),
+      expect.objectContaining({ message: 'injected delete failure' }),
+    ]);
   });
 
   it('restores text and character shapes when character-shape application fails after insertion', () => {
@@ -53,20 +118,99 @@ describe('HanjaReplaceCommand', () => {
     expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
   });
 
-  it('completes transiently failing undo and redo without corrupting command history', () => {
+  it('verifies each restored character-shape run after setters mutate and throw', () => {
+    const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
+    const command = new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校');
+    wasm.failAfterEveryStyle = true;
+
+    expect(() => command.execute(wasm as never)).toThrow('injected post-style failure');
+    expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
+  });
+
+  it('uses immediate flat-cell insertion so deferred-result parsing cannot corrupt rollback', () => {
+    const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
+    const command = new HanjaReplaceCommand(CELL_POSITION, '학교', '학교', 2, '學校');
+    wasm.failDeferredAfterInsert = true;
+
+    expect(() => command.execute(wasm as never)).not.toThrow();
+    expect(wasm.deferredInsertCalls).toBe(0);
+    expect(wasm.state()).toEqual({ text: 'A學校B', shapes: [0, 7, 8, 0] });
+  });
+
+  it('preserves history so a transiently failing undo and redo can be retried', () => {
     const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
     const history = new CommandHistory();
+    installRecoveredCommandHistoryGuard({ history } as never);
     const command = new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校');
     history.execute(command, wasm as never);
 
     wasm.failNextInsert = true;
-    expect(() => history.undo(wasm as never)).not.toThrow();
+    expect(() => history.undo(wasm as never)).toThrow('injected insert failure');
+    expect(wasm.state()).toEqual({ text: 'A學校B', shapes: [0, 7, 8, 0] });
+    expect(history.canUndo()).toBe(true);
+    expect(history.undo(wasm as never)).toMatchObject({ charOffset: 3 });
     expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
 
     wasm.failNextInsert = true;
-    expect(() => history.redo(wasm as never)).not.toThrow();
+    expect(() => history.redo(wasm as never)).toThrow('injected insert failure');
+    expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
+    expect(history.canRedo()).toBe(true);
+    expect(history.redo(wasm as never)).toMatchObject({ charOffset: 3 });
     expect(wasm.state()).toEqual({ text: 'A學校B', shapes: [0, 7, 8, 0] });
 
+    expect(history.undo(wasm as never)).toMatchObject({ charOffset: 3 });
+    expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
+  });
+
+  it('keeps a fully recovered command in history after repeated undo and redo failures', () => {
+    const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
+    const history = new CommandHistory();
+    installRecoveredCommandHistoryGuard({ history } as never);
+    const command = new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校');
+    history.execute(command, wasm as never);
+
+    wasm.failInsertionsOf('학교', 2);
+    expect(() => history.undo(wasm as never)).toThrow('injected insert failure');
+    expect(wasm.state()).toEqual({ text: 'A學校B', shapes: [0, 7, 8, 0] });
+    expect(history.canUndo()).toBe(true);
+    expect(history.canRedo()).toBe(false);
+
+    expect(() => history.undo(wasm as never)).toThrow('injected insert failure');
+    expect(wasm.state()).toEqual({ text: 'A學校B', shapes: [0, 7, 8, 0] });
+    expect(history.canUndo()).toBe(true);
+
+    expect(history.undo(wasm as never)).toMatchObject({ charOffset: 3 });
+    expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
+
+    wasm.failInsertionsOf('學校', 2);
+    expect(() => history.redo(wasm as never)).toThrow('injected insert failure');
+    expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
+    expect(history.canRedo()).toBe(true);
+
+    expect(() => history.redo(wasm as never)).toThrow('injected insert failure');
+    expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
+    expect(history.canRedo()).toBe(true);
+
+    expect(history.redo(wasm as never)).toMatchObject({ charOffset: 3 });
+    expect(wasm.state()).toEqual({ text: 'A學校B', shapes: [0, 7, 8, 0] });
+  });
+
+  it('keeps source text and history when both transition insertions are unavailable', () => {
+    const wasm = new StatefulWasm('A학교B', [0, 7, 8, 0]);
+    const history = new CommandHistory();
+    installRecoveredCommandHistoryGuard({ history } as never);
+    history.execute(
+      new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校'),
+      wasm as never,
+    );
+    wasm.blockInsertionsOf('학교', '學校');
+
+    expect(() => history.undo(wasm as never)).toThrow('injected insert failure');
+    expect(wasm.state()).toEqual({ text: 'A學校B', shapes: [0, 7, 8, 0] });
+    expect(history.canUndo()).toBe(true);
+    expect(history.canRedo()).toBe(false);
+
+    wasm.allowInsertions();
     expect(history.undo(wasm as never)).toMatchObject({ charOffset: 3 });
     expect(wasm.state()).toEqual({ text: 'A학교B', shapes: [0, 7, 8, 0] });
   });
@@ -173,7 +317,7 @@ describe('HanjaReplaceCommand with bundled WASM', () => {
     }
   });
 
-  it('restores the real WASM document when insertion throws after deletion', () => {
+  it('leaves the real WASM document unchanged when insertion fails before mutation', () => {
     const originalShapeIds = realShapeIds(wasm);
     const command = new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校');
     const insertText = vi.spyOn(wasm, 'insertText').mockImplementationOnce(() => {
@@ -185,6 +329,62 @@ describe('HanjaReplaceCommand with bundled WASM', () => {
 
     expect(wasm.getTextRange(0, 0, 0, 4)).toBe('A학교B');
     expect(realShapeIds(wasm)).toEqual(originalShapeIds);
+  });
+
+  it('restores the real WASM document when insertion mutates before throwing', () => {
+    const originalShapeIds = realShapeIds(wasm);
+    const command = new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校');
+    const originalInsertText = wasm.insertText.bind(wasm);
+    const insertText = vi.spyOn(wasm, 'insertText').mockImplementationOnce((...args) => {
+      originalInsertText(...args);
+      throw new Error('injected WASM post-insert failure');
+    });
+
+    expect(() => command.execute(wasm)).toThrow('injected WASM post-insert failure');
+    insertText.mockRestore();
+
+    expect(wasm.getTextRange(0, 0, 0, 4)).toBe('A학교B');
+    expect(realShapeIds(wasm)).toEqual(originalShapeIds);
+  });
+
+  it('restores the real WASM document when deletion mutates before throwing', () => {
+    const originalShapeIds = realShapeIds(wasm);
+    const command = new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校');
+    const originalDeleteText = wasm.deleteText.bind(wasm);
+    const deleteText = vi.spyOn(wasm, 'deleteText').mockImplementationOnce((...args) => {
+      originalDeleteText(...args);
+      throw new Error('injected WASM post-delete failure');
+    });
+
+    expect(() => command.execute(wasm)).toThrow('injected WASM post-delete failure');
+    deleteText.mockRestore();
+
+    expect(wasm.getTextRange(0, 0, 0, 4)).toBe('A학교B');
+    expect(realShapeIds(wasm)).toEqual(originalShapeIds);
+  });
+
+  it('keeps real WASM text and undo history when recovery insertions are unavailable', () => {
+    const history = new CommandHistory();
+    installRecoveredCommandHistoryGuard({ history } as never);
+    history.execute(
+      new HanjaReplaceCommand(BODY_POSITION, '학교', '학교', 2, '學校'),
+      wasm,
+    );
+    const originalInsertText = wasm.insertText.bind(wasm);
+    const insertText = vi.spyOn(wasm, 'insertText').mockImplementation((...args) => {
+      const text = args[3];
+      if (text === '학교' || text === '學校') throw new Error('injected WASM insert failure');
+      return originalInsertText(...args);
+    });
+
+    expect(() => history.undo(wasm)).toThrow('injected WASM insert failure');
+    expect(wasm.getTextRange(0, 0, 0, 4)).toBe('A學校B');
+    expect(history.canUndo()).toBe(true);
+    expect(history.canRedo()).toBe(false);
+
+    insertText.mockRestore();
+    expect(history.undo(wasm)).toMatchObject({ charOffset: 3 });
+    expect(wasm.getTextRange(0, 0, 0, 4)).toBe('A학교B');
   });
 });
 
@@ -210,9 +410,18 @@ function readNodeFile(url: URL): Promise<Uint8Array> {
 class StatefulWasm {
   failNextInsert = false;
   failNextStyle = false;
+  failAfterEveryStyle = false;
+  failDeferredAfterInsert = false;
+  deferredInsertCalls = 0;
   textAtStyleFailure: string | null = null;
   private characters: string[];
   private shapes: number[];
+  private insertionFailure: { text: string; remaining: number } | null = null;
+  private postInsertionFailure: { text: string; remaining: number } | null = null;
+  private postDeleteFailureAt: number | null = null;
+  private deleteFailureFrom: number | null = null;
+  private deleteCalls = 0;
+  private blockedInsertions = new Set<string>();
 
   constructor(text: string, shapes: number[]) {
     this.characters = Array.from(text);
@@ -221,6 +430,54 @@ class StatefulWasm {
 
   state(): { text: string; shapes: number[] } {
     return { text: this.characters.join(''), shapes: [...this.shapes] };
+  }
+
+  failInsertionsOf(text: string, count: number): void {
+    this.insertionFailure = { text, remaining: count };
+  }
+
+  failAfterInserting(text: string, count: number): void {
+    this.postInsertionFailure = { text, remaining: count };
+  }
+
+  failAfterDeleting(call: number): void {
+    this.postDeleteFailureAt = call;
+  }
+
+  failBeforeDeletingFrom(call: number): void {
+    this.deleteFailureFrom = call;
+  }
+
+  blockInsertionsOf(...texts: string[]): void {
+    this.blockedInsertions = new Set(texts);
+  }
+
+  allowInsertions(): void {
+    this.blockedInsertions.clear();
+  }
+
+  getParagraphLength(): number {
+    return this.characters.length;
+  }
+
+  getCellParagraphLength(): number {
+    return this.characters.length;
+  }
+
+  getTextRange(_section: number, _paragraph: number, offset: number, count: number): string {
+    return this.characters.slice(offset, offset + count).join('');
+  }
+
+  getTextInCell(
+    _section: number,
+    _parent: number,
+    _control: number,
+    _cell: number,
+    _paragraph: number,
+    offset: number,
+    count: number,
+  ): string {
+    return this.characters.slice(offset, offset + count).join('');
   }
 
   getCharPropertiesAt(_section: number, _paragraph: number, offset: number) {
@@ -245,6 +502,7 @@ class StatefulWasm {
       throw new Error('injected style failure');
     }
     this.shapes.fill(id, start, end);
+    if (this.failAfterEveryStyle) throw new Error('injected post-style failure');
   }
 
   setCharShapeIdInCell(
@@ -301,22 +559,40 @@ class StatefulWasm {
     offset: number,
     text: string,
   ) {
+    this.deferredInsertCalls += 1;
     this.insertTextInCell(section, parent, control, cell, paragraph, offset, text);
+    if (this.failDeferredAfterInsert) throw new Error('mutated then failed parsing deferred result');
     return { paginationDeferred: false, cellFlowChanged: false };
   }
 
   private delete(offset: number, count: number): void {
+    this.deleteCalls += 1;
+    if (this.deleteFailureFrom !== null && this.deleteCalls >= this.deleteFailureFrom) {
+      throw new Error('injected delete failure');
+    }
     this.characters.splice(offset, count);
     this.shapes.splice(offset, count);
+    if (this.deleteCalls === this.postDeleteFailureAt) {
+      throw new Error('injected post-delete failure');
+    }
   }
 
   private insert(offset: number, text: string): void {
+    if (this.blockedInsertions.has(text)) throw new Error('injected insert failure');
     if (this.failNextInsert) {
       this.failNextInsert = false;
+      throw new Error('injected insert failure');
+    }
+    if (this.insertionFailure?.text === text && this.insertionFailure.remaining > 0) {
+      this.insertionFailure.remaining -= 1;
       throw new Error('injected insert failure');
     }
     const characters = Array.from(text);
     this.characters.splice(offset, 0, ...characters);
     this.shapes.splice(offset, 0, ...characters.map(() => 0));
+    if (this.postInsertionFailure?.text === text && this.postInsertionFailure.remaining > 0) {
+      this.postInsertionFailure.remaining -= 1;
+      throw new Error('injected post-insert failure');
+    }
   }
 }

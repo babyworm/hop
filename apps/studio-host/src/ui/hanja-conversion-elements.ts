@@ -1,4 +1,5 @@
 import type { HanjaCharacterCandidate, HanjaWordCandidate } from '../hanja/hanja-dictionary';
+import { onDocumentGenerationChange } from '../core/document-generation';
 
 let dialogSequence = 0;
 
@@ -23,6 +24,7 @@ export function createDialogShell(
   let settled = false;
   let modeKeyTarget: HTMLElement | null = null;
   let modeKeyHandler: (event: KeyboardEvent) => boolean = () => false;
+  let stopWatchingDocument = () => {};
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -35,6 +37,7 @@ export function createDialogShell(
 
   const onKeyDown = (event: KeyboardEvent) => {
     event.stopPropagation();
+    if (event.key === 'F11') event.preventDefault();
     if (event.key === 'Escape') {
       event.preventDefault();
       close(null);
@@ -55,12 +58,13 @@ export function createDialogShell(
     if (event.target === modeKeyTarget && modeKeyHandler(event)) event.preventDefault();
   };
 
-  const close = (value: string | null) => {
+  const close = (value: string | null, restoreFocus = true) => {
     if (settled) return;
     settled = true;
-    document.removeEventListener('keydown', onKeyDown, true);
+    window.removeEventListener('keydown', onKeyDown, true);
+    stopWatchingDocument();
     overlay.remove();
-    previouslyFocused?.focus();
+    if (restoreFocus) previouslyFocused?.focus();
     resolve(value);
   };
 
@@ -81,7 +85,8 @@ export function createDialogShell(
     mount(focusTarget) {
       modeKeyTarget = focusTarget;
       document.body.appendChild(overlay);
-      document.addEventListener('keydown', onKeyDown, true);
+      window.addEventListener('keydown', onKeyDown, true);
+      stopWatchingDocument = onDocumentGenerationChange(() => close(null, false));
       focusTarget.focus();
     },
   };

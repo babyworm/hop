@@ -1,4 +1,6 @@
 import type { CommandDef, CommandServices, EditorContext } from '@/upstream/commands';
+import { getInputHandlerShortcutCaptureState } from '@/upstream/editor';
+import { currentDocumentGeneration } from '../../core/document-generation';
 import type { HanjaDictionary } from '../../hanja/hanja-dictionary';
 import {
   createBundledHanjaDictionary,
@@ -38,6 +40,7 @@ async function convertHanja(
   services: CommandServices,
   expectedDirection: HanjaConversionDirection | null,
 ): Promise<void> {
+  const initialDocumentGeneration = currentDocumentGeneration();
   try {
     const source = readConversionSource(services);
     if (expectedDirection && source.direction !== expectedDirection) {
@@ -50,11 +53,19 @@ async function convertHanja(
     const lookup = source.direction === 'hanja-to-hangul'
       ? await dictionary.lookupHanja(source.text)
       : await dictionary.lookup(source.text);
+    const inputState = getInputHandlerShortcutCaptureState(services.getInputHandler());
     if (
       !isHanjaConversionContextEditable(services.getContext()) ||
-      !isConversionSourceCurrent(services, source)
+      !isConversionSourceCurrent(services, source) ||
+      !inputState.isEditorActive ||
+      inputState.isInternallyComposing ||
+      inputState.hasActivePlacementMode
     ) {
       setStatusMessage('편집 위치가 바뀌어 한자 변환을 취소했습니다.');
+      return;
+    }
+    if (hasActiveModal()) {
+      setStatusMessage('다른 대화상자가 열려 한자 변환을 취소했습니다.');
       return;
     }
 
@@ -91,7 +102,19 @@ async function convertHanja(
     }
     console.warn('[hanja-conversion] 변환 작업을 완료하지 못했습니다.', errorSummary(error));
     setStatusMessage('한자 변환 중 오류가 발생했습니다.');
+  } finally {
+    if (
+      currentDocumentGeneration() === initialDocumentGeneration &&
+      !hasActiveModal()
+    ) {
+      services.getInputHandler()?.focus();
+    }
   }
+}
+
+function hasActiveModal(): boolean {
+  return typeof document.querySelector === 'function' &&
+    document.querySelector('.modal-overlay') !== null;
 }
 
 function conversionDirectionParam(
@@ -109,7 +132,7 @@ function contextName(direction: HanjaConversionDirection): string {
 
 export function isHanjaConversionContextEditable(context: EditorContext): boolean {
   return context.hasDocument && context.isEditable &&
-    !context.isFormMode &&
+    !context.isFormMode && !context.inField &&
     !context.inPictureObjectSelection && !context.inTableObjectSelection &&
     !context.inCellSelectionMode && !context.hasMultiCellSelection;
 }
@@ -124,8 +147,7 @@ export function logHanjaLookupFailure(error: HanjaLookupError): void {
 }
 
 function errorSummary(error: unknown): string | undefined {
-  if (error instanceof Error) return `${error.name}: ${error.message}`;
-  return error === undefined ? undefined : String(error);
+  return error instanceof Error ? error.name : undefined;
 }
 
 function setStatusMessage(message: string): void {

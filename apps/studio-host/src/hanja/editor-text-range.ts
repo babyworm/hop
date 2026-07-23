@@ -1,9 +1,16 @@
 import type { CommandServices } from '@/upstream/commands';
-import type { DocumentPosition, WasmBridge } from '@/upstream/core';
+import type { DocumentPosition } from '@/upstream/core';
 import { currentDocumentGeneration } from '../core/document-generation';
 import type { EditCommand } from '../upstream/editor';
 import { getInputHandlerCursorAccess } from '../upstream/editor';
+import {
+  assertCompatibleTextOffsets,
+  HanjaEditorRangeError,
+  readHanjaText,
+} from './hanja-editor-text-access';
 import { HanjaReplaceCommand } from './hanja-replace-command';
+
+export { HanjaEditorRangeError };
 
 interface ConversionInputHandler {
   getSelection(): { start: DocumentPosition; end: DocumentPosition } | null;
@@ -29,32 +36,8 @@ export interface HanjaConversionSource {
 
 export type HanjaConversionDirection = 'hangul-to-hanja' | 'hanja-to-hangul';
 
-export class HanjaEditorRangeError extends Error {
-  constructor(
-    readonly code: 'no-editor' | 'unsupported-context' | 'invalid-selection' | 'no-convertible-text',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'HanjaEditorRangeError';
-  }
-}
-
-export function findHangulWordRange(
-  paragraphText: string,
-  cursorOffset: number,
-): { start: number; end: number; text: string } | null {
-  const characters = Array.from(paragraphText);
-  const offset = Math.max(0, Math.min(characters.length, cursorOffset));
-  let index = offset;
-  if (!isHangulAt(characters, index) && isHangulAt(characters, index - 1)) index -= 1;
-  if (!isHangulAt(characters, index)) return null;
-
-  let start = index;
-  let end = index + 1;
-  while (start > 0 && isHangulAt(characters, start - 1)) start -= 1;
-  while (end < characters.length && isHangulAt(characters, end)) end += 1;
-  return { start, end, text: characters.slice(start, end).join('') };
-}
+const MAX_CONVERSION_LENGTH = 64;
+const CARET_WINDOW_RADIUS = MAX_CONVERSION_LENGTH + 1;
 
 export function findConvertibleWordRange(
   paragraphText: string,
@@ -97,7 +80,13 @@ export function readConversionSource(
     throw new HanjaEditorRangeError('no-editor', '변환할 문서가 없습니다.');
   }
   const cursorAccess = getInputHandlerCursorAccess(inputHandler);
-  if (cursorAccess?.isInHeaderFooter?.() || cursorAccess?.isInFootnote?.()) {
+  if (!cursorAccess) {
+    throw new HanjaEditorRangeError(
+      'unsupported-context',
+      '현재 편집기에서는 한글/한자 변환을 지원하지 않습니다.',
+    );
+  }
+  if (cursorAccess.isInHeaderFooter() || cursorAccess.isInFootnote()) {
     throw new HanjaEditorRangeError(
       'unsupported-context',
       '머리말·꼬리말·각주에서는 아직 한자 변환을 지원하지 않습니다.',
@@ -108,26 +97,38 @@ export function readConversionSource(
   if (selection) {
     assertSameTextContainer(selection.start, selection.end);
     assertSupportedContainer(selection.start);
+    assertCompatibleTextOffsets(services.wasm, selection.start);
     const count = selection.end.charOffset - selection.start.charOffset;
     if (count <= 0) {
       throw new HanjaEditorRangeError('invalid-selection', '변환할 글자를 선택해 주세요.');
     }
-    const text = readText(services.wasm, selection.start, count);
+    assertConversionLength(count);
+    assertOutsideFields(services.wasm, selection.start, selection.end);
+    const text = readHanjaText(services.wasm, selection.start, count);
     return sourceFrom(text, selection.start, selection.end, true);
   }
 
   const cursor = inputHandler.getCursorPosition();
   assertSupportedContainer(cursor);
-  const paragraphText = readParagraph(services.wasm, cursor);
-  const word = findConvertibleWordRange(paragraphText, cursor.charOffset);
+  const paragraphLength = assertCompatibleTextOffsets(services.wasm, cursor);
+  const windowStart = Math.max(0, cursor.charOffset - CARET_WINDOW_RADIUS);
+  const windowEnd = Math.min(paragraphLength, cursor.charOffset + CARET_WINDOW_RADIUS);
+  const paragraphText = readHanjaText(
+    services.wasm,
+    { ...cursor, charOffset: windowStart },
+    windowEnd - windowStart,
+  );
+  const word = findConvertibleWordRange(paragraphText, cursor.charOffset - windowStart);
   if (!word) {
     throw new HanjaEditorRangeError(
       'no-convertible-text',
       '한글 또는 한자 단어를 선택하거나 단어 안에 커서를 놓아 주세요.',
     );
   }
-  const start = { ...cursor, charOffset: word.start };
-  const end = { ...cursor, charOffset: word.end };
+  assertConversionLength(word.end - word.start);
+  const start = { ...cursor, charOffset: windowStart + word.start };
+  const end = { ...cursor, charOffset: windowStart + word.end };
+  assertOutsideFields(services.wasm, start, end);
   return sourceFrom(word.text, start, end, false);
 }
 
@@ -149,6 +150,13 @@ export function replaceConversionSource(
   replacement: string,
 ): boolean {
   if (!replacement || replacement === source.text) return false;
+  const cursorAccess = getInputHandlerCursorAccess(inputHandler);
+  if (!cursorAccess) {
+    throw new HanjaEditorRangeError(
+      'unsupported-context',
+      '현재 편집기에서는 한글/한자 변환을 지원하지 않습니다.',
+    );
+  }
   inputHandler.executeOperation({
     kind: 'command',
     command: new HanjaReplaceCommand(
@@ -160,7 +168,7 @@ export function replaceConversionSource(
     ),
     meta: { refresh: 'full' },
   });
-  getInputHandlerCursorAccess(inputHandler)?.clearSelection?.();
+  cursorAccess.clearSelection();
   return true;
 }
 
@@ -171,6 +179,7 @@ function sourceFrom(
   selected: boolean,
 ): HanjaConversionSource {
   const normalized = text.normalize('NFC');
+  assertConversionLength(Array.from(normalized).length);
   const direction = conversionDirectionForText(normalized);
   if (!direction) {
     throw new HanjaEditorRangeError(
@@ -191,49 +200,34 @@ function sourceFrom(
   return { ...source, fingerprint: fingerprint(source) };
 }
 
-function readParagraph(wasm: WasmBridge, position: DocumentPosition): string {
-  if (position.parentParaIndex !== undefined) {
-    const length = wasm.getCellParagraphLength(
-      position.sectionIndex,
-      position.parentParaIndex,
-      position.controlIndex!,
-      position.cellIndex!,
-      position.cellParaIndex!,
-    );
-    return wasm.getTextInCell(
-      position.sectionIndex,
-      position.parentParaIndex,
-      position.controlIndex!,
-      position.cellIndex!,
-      position.cellParaIndex!,
-      0,
-      length,
-    );
-  }
-  const length = wasm.getParagraphLength(position.sectionIndex, position.paragraphIndex);
-  return wasm.getTextRange(position.sectionIndex, position.paragraphIndex, 0, length);
-}
-
-function readText(wasm: WasmBridge, position: DocumentPosition, count: number): string {
-  if (position.parentParaIndex !== undefined) {
-    return wasm.getTextInCell(
-      position.sectionIndex,
-      position.parentParaIndex,
-      position.controlIndex!,
-      position.cellIndex!,
-      position.cellParaIndex!,
-      position.charOffset,
-      count,
-    );
-  }
-  return wasm.getTextRange(position.sectionIndex, position.paragraphIndex, position.charOffset, count);
-}
-
 function assertSupportedContainer(position: DocumentPosition): void {
   if ((position.cellPath?.length ?? 0) > 1) {
     throw new HanjaEditorRangeError(
       'unsupported-context',
       '중첩 표 셀에서는 아직 문자 서식을 보존한 한자 변환을 지원하지 않습니다.',
+    );
+  }
+}
+
+function assertOutsideFields(
+  wasm: CommandServices['wasm'],
+  start: DocumentPosition,
+  end: DocumentPosition,
+): void {
+  try {
+    for (let offset = start.charOffset; offset < end.charOffset; offset += 1) {
+      if (wasm.getFieldInfoAt({ ...start, charOffset: offset }).inField) {
+        throw new HanjaEditorRangeError(
+          'unsupported-context',
+          '누름틀 안에서는 아직 한글/한자 변환을 지원하지 않습니다.',
+        );
+      }
+    }
+  } catch (error) {
+    if (error instanceof HanjaEditorRangeError) throw error;
+    throw new HanjaEditorRangeError(
+      'unsupported-context',
+      '현재 편집기에서는 한글/한자 변환을 지원하지 않습니다.',
     );
   }
 }
@@ -281,8 +275,13 @@ function positionKey(position: DocumentPosition): object {
   };
 }
 
-function isHangulAt(value: readonly string[], index: number): boolean {
-  return index >= 0 && index < value.length && /[가-힣]/u.test(value[index] ?? '');
+function assertConversionLength(length: number): void {
+  if (length > MAX_CONVERSION_LENGTH) {
+    throw new HanjaEditorRangeError(
+      'invalid-selection',
+      `한 번에 ${MAX_CONVERSION_LENGTH}자까지만 변환할 수 있습니다.`,
+    );
+  }
 }
 
 function conversionDirectionForText(value: string): HanjaConversionDirection | null {
