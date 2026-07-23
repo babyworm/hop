@@ -1,5 +1,6 @@
 import type { WasmBridge } from '@/upstream/core';
 import { PageRenderer as UpstreamPageRenderer } from '@/upstream/view';
+import type { PageRenderContext, PageRenderResult } from '@/upstream/view';
 
 const RE_RENDER_DELAYS_MS = [200, 600];
 
@@ -17,14 +18,30 @@ export class HopPageRenderer {
     renderScale: number,
     displayScale: number,
     dpr: number,
-  ): void {
-    this.cancelReRender(pageIdx);
+    context: PageRenderContext = {},
+  ): PageRenderResult {
+    if (context.reason === 'text-edit') {
+      this.upstream.cancelReRender(pageIdx);
+    } else {
+      this.cancelReRender(pageIdx);
+    }
+    let result: PageRenderResult;
     try {
-      this.upstream.renderPage(pageIdx, canvas, renderScale, displayScale, dpr);
+      result = this.upstream.renderPage(
+        pageIdx,
+        canvas,
+        renderScale,
+        displayScale,
+        dpr,
+        context,
+      );
     } finally {
       this.upstream.cancelReRender(pageIdx);
     }
-    this.scheduleFlowReRender(pageIdx, canvas, renderScale);
+    if (context.reason !== 'text-edit') {
+      this.scheduleFlowReRender(pageIdx, canvas, renderScale);
+    }
+    return result;
   }
 
   cancelReRender(pageIdx: number): void {
