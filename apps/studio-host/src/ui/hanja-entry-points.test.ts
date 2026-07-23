@@ -16,12 +16,25 @@ describe('Hanja conversion entry points', () => {
     expect(characterTable).toBeGreaterThan(-1);
     expect(conversion).toBeGreaterThan(characterTable);
     expect(conversion).toBeLessThan(nextSeparator);
+    expect(html).toContain('<span class="md-label">한글/한자 변환</span>');
+  });
+
+  it('shows both conversion shortcuts in every menu entry', () => {
+    const entries = Array.from(
+      studioHtml.matchAll(
+        /<div class="md-item" data-cmd="edit:convert-hanja">([\s\S]*?)<\/div>/gu,
+      ),
+      (match) => match[1],
+    );
+
+    expect(entries).toHaveLength(2);
+    expect(entries.every((entry) => entry?.includes('F9 / Alt+F9'))).toBe(true);
   });
 
   it('places a Hanja toolbar button directly after Character Table', () => {
     const html = studioHtml;
     const toolbar = html.indexOf('title="문자표 (Alt+F10)"');
-    const conversion = html.indexOf('title="한글/한자 변환 (F9)"', toolbar);
+    const conversion = html.indexOf('title="한글/한자 변환 (F9 / Alt+F9)"', toolbar);
     const hyperlink = html.indexOf('title="하이퍼링크"', toolbar);
 
     expect(toolbar).toBeGreaterThan(-1);
@@ -49,7 +62,7 @@ describe('Hanja conversion entry points', () => {
     expect(shouldOfferHanjaContextMenu(editableServices() as never, readSource as never)).toBe(true);
     expect(contextMenuConversionLabel('hanja-to-hangul')).toBe('한글로 변환');
     expect(hanjaConversionShortcutLabel('hanja-to-hangul', 'macos')).toBe('⌥F9');
-    expect(hanjaConversionShortcutLabel('hanja-to-hangul', 'windows')).toBe('Alt+F8');
+    expect(hanjaConversionShortcutLabel('hanja-to-hangul', 'windows')).toBe('Alt+F9');
   });
 
   it('hides the context submenu for an English selection', () => {

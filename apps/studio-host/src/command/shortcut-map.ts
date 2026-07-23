@@ -72,14 +72,12 @@ export function matchHanjaConversionShortcut(
     HanjaShortcutEvent,
     'key' | 'code' | 'keyCode' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'
   >,
-  platform: DesktopPlatform = detectDesktopPlatform(),
 ): HanjaConversionDirection | null {
   if (event.ctrlKey || event.metaKey || event.shiftKey) return null;
-  if (!event.altKey && isFunctionKey(event, 9)) return 'hangul-to-hanja';
+  if (!event.altKey && isF9(event)) return 'hangul-to-hanja';
   if (!event.altKey) return null;
 
-  const reverseKey = platform === 'windows' ? 8 : 9;
-  return isFunctionKey(event, reverseKey) ? 'hanja-to-hangul' : null;
+  return isF9(event) ? 'hanja-to-hangul' : null;
 }
 
 export function hanjaConversionShortcutLabel(
@@ -87,8 +85,7 @@ export function hanjaConversionShortcutLabel(
   platform: DesktopPlatform = detectDesktopPlatform(),
 ): string {
   if (direction === 'hangul-to-hanja') return 'F9';
-  const label = platform === 'windows' ? 'Alt+F8' : 'Alt+F9';
-  return normalizeShortcutLabel(label, platform);
+  return normalizeShortcutLabel('Alt+F9', platform);
 }
 
 export function hanjaCommandShortcutLabel(
@@ -97,14 +94,10 @@ export function hanjaCommandShortcutLabel(
   return `F9 / ${hanjaConversionShortcutLabel('hanja-to-hangul', platform)}`;
 }
 
-function isFunctionKey(
-  event: Pick<HanjaShortcutEvent, 'key' | 'code' | 'keyCode'>,
-  number: 8 | 9,
-): boolean {
-  const key = `f${number}`;
-  return event.key.toLowerCase() === key ||
-    event.code.toLowerCase() === key ||
-    event.keyCode === 111 + number;
+function isF9(event: Pick<HanjaShortcutEvent, 'key' | 'code' | 'keyCode'>): boolean {
+  return event.key.toLowerCase() === 'f9' ||
+    event.code.toLowerCase() === 'f9' ||
+    event.keyCode === 120;
 }
 
 const hopShortcutKeys = new Set(hopShortcuts.map(([shortcut]) => shortcutKey(shortcut)));

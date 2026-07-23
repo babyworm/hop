@@ -98,27 +98,34 @@ describe('shortcut-map', () => {
     expect(hanjaCommandShortcutLabel()).toBe('F9 / ⌥F9');
   });
 
-  it('uses Alt+F8 for reverse conversion on Windows', () => {
+  it('uses Alt+F9 for reverse conversion on Windows', () => {
     installNavigator({ platform: 'Win32', userAgent: 'Windows NT 10.0' });
     const dispatcher = { dispatch: vi.fn(() => true) };
-    const event = captureKeyEvent({ key: 'F8', altKey: true });
+    const event = captureKeyEvent({ key: 'F9', altKey: true });
 
     expect(handleHanjaShortcutCapture(event, dispatcher, captureState())).toBe(true);
     expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja', {
       direction: 'hanja-to-hangul',
     });
-    expect(hanjaConversionShortcutLabel('hanja-to-hangul')).toBe('Alt+F8');
-    expect(hanjaCommandShortcutLabel()).toBe('F9 / Alt+F8');
+    expect(hanjaConversionShortcutLabel('hanja-to-hangul')).toBe('Alt+F9');
+    expect(hanjaCommandShortcutLabel()).toBe('F9 / Alt+F9');
   });
 
-  it('keeps the reverse chord platform-specific', () => {
+  it('uses Alt+F9 for reverse conversion on Linux', () => {
+    installNavigator({ platform: 'Linux x86_64', userAgent: 'X11; Linux x86_64' });
+    const dispatcher = { dispatch: vi.fn(() => true) };
+    const event = captureKeyEvent({ key: 'F9', altKey: true });
+
+    expect(handleHanjaShortcutCapture(event, dispatcher, captureState())).toBe(true);
+    expect(dispatcher.dispatch).toHaveBeenCalledWith('edit:convert-hanja', {
+      direction: 'hanja-to-hangul',
+    });
+    expect(hanjaConversionShortcutLabel('hanja-to-hangul')).toBe('Alt+F9');
+  });
+
+  it('ignores the old Alt+F8 reverse chord', () => {
     expect(matchHanjaConversionShortcut(
       captureKeyEvent({ key: 'F8', altKey: true }),
-      'macos',
-    )).toBeNull();
-    expect(matchHanjaConversionShortcut(
-      captureKeyEvent({ key: 'F9', altKey: true }),
-      'windows',
     )).toBeNull();
   });
 
