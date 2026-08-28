@@ -174,6 +174,20 @@ test('HOP composes upstream theme state and keeps owned surfaces token-based', a
   }
 });
 
+test('HOP keeps the pinned upstream style toolbar markup contract', async () => {
+  const studioHtml = await readFile(join(repoRoot, 'apps/studio-host/index.html'), 'utf8');
+  const upstreamHtml = await readFile(
+    join(repoRoot, 'third_party/rhwp/rhwp-studio/index.html'),
+    'utf8',
+  );
+
+  assert.equal(
+    extractStyleToolbar(studioHtml),
+    extractStyleToolbar(upstreamHtml),
+    'HOP style toolbar markup must stay aligned with pinned rhwp CSS',
+  );
+});
+
 async function typescriptFiles(directory) {
   const results = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -196,6 +210,14 @@ async function rustFiles(directory) {
 
 function localModuleExists(moduleId) {
   return moduleExists(studioRoot, moduleId);
+}
+
+function extractStyleToolbar(html) {
+  const match = html.match(
+    /<!-- 서식 도구 모음 \(style bar\) -->\s*(<div id="style-bar">[\s\S]*<\/div>)\s*(?:<\/header>\s*)?<!-- 에디터 영역 \(눈금자 포함\) -->/,
+  );
+  assert.ok(match, 'style toolbar section should exist');
+  return match[1].trim();
 }
 
 function moduleExists(root, moduleId) {
