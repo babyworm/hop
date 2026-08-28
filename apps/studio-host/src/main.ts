@@ -3,7 +3,7 @@ import {
   applyDesktopChromePlatformState,
   installNonEditorContextMenuGuards,
 } from '@/core/desktop-chrome';
-import { DocumentDirtyState, EventBus } from '@/upstream/core';
+import { DocumentDirtyState, EventBus, initThemeSync } from '@/upstream/core';
 import type { DocumentInfo } from '@/upstream/core';
 import { createDesktopDocument, setupDesktopEvents } from '@/core/desktop-events';
 import { detectDesktopPlatform, hasPrimaryModifier, hydrateDesktopPlatform } from '@/core/platform';
@@ -32,6 +32,10 @@ const eventBus = new EventBus();
 const documentState = new DocumentDirtyState(eventBus);
 const rendererSession = createRendererSession();
 documentState.installBeforeUnload(window);
+initThemeSync((effective, mode) => {
+  eventBus.emit('theme-changed', { mode, effective });
+  eventBus.emit('command-state-changed');
+});
 let desktopPlatform = detectDesktopPlatform();
 
 type DirtyAwareBridge = {

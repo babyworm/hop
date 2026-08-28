@@ -57,6 +57,18 @@ test('desktop product crates reach rhwp only through the shared Rust adapter', a
   assert.deepEqual(violations, []);
 });
 
+test('desktop keeps PDF policy thin and delegates searchable encoding to rhwp', async () => {
+  const desktopManifest = await readFile(join(repoRoot, 'apps/desktop/src-tauri/Cargo.toml'), 'utf8');
+  const pdfExport = await readFile(join(repoRoot, 'apps/desktop/src-tauri/src/pdf_export.rs'), 'utf8');
+  const adapter = await readFile(join(rustAdapterRoot, 'src/lib.rs'), 'utf8');
+
+  assert.doesNotMatch(desktopManifest, /^pdf-writer\s*=|^svg2pdf\s*=\s*"/m);
+  assert.doesNotMatch(pdfExport, /embed_text\s*:\s*false|pdf_writer::|svg2pdf::/);
+  assert.match(pdfExport, /searchable_pdf_from_svg_pages/);
+  assert.match(adapter, /svgs_to_pdf_with_options/);
+  assert.match(adapter, /embed_text:\s*true/);
+});
+
 test('every Vite override is classified and points to an intentional HOP module', async () => {
   const manifest = JSON.parse(await readFile(join(repoRoot, 'config/rhwp-studio-overrides.json'), 'utf8'));
   assert.equal(manifest.schemaVersion, 1);
@@ -125,6 +137,31 @@ test('HOP composes the upstream renderer and ruler protocols without local forks
   assert.ok(!manifest.overrides.some((entry) => entry.id.startsWith('view/')));
   for (const path of ['view/canvas-view.ts', 'view/ruler.ts', 'view/hop-page-renderer.ts']) {
     await assert.rejects(access(join(studioRoot, path)), { code: 'ENOENT' });
+  }
+});
+
+test('HOP composes upstream theme state and keeps owned surfaces token-based', async () => {
+  const mainSource = await readFile(join(studioRoot, 'main.ts'), 'utf8');
+  const coreAdapter = await readFile(join(studioRoot, 'upstream/core.ts'), 'utf8');
+  const studioHtml = await readFile(join(repoRoot, 'apps/studio-host/index.html'), 'utf8');
+
+  assert.match(coreAdapter, /initThemeSync[\s\S]*@upstream\/core\/theme/);
+  assert.match(mainSource, /initThemeSync\(\(effective, mode\) =>/);
+  for (const mode of ['system', 'light', 'dark']) {
+    assert.equal(
+      studioHtml.match(new RegExp(`data-theme-mode-choice="${mode}"`, 'g'))?.length,
+      1,
+    );
+  }
+
+  for (const relativePath of [
+    'styles/custom-select.css',
+    'styles/font-set-dialog.css',
+    'styles/home-screen.css',
+    'styles/update-notice.css',
+  ]) {
+    const css = await readFile(join(studioRoot, relativePath), 'utf8');
+    assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i, `${relativePath} must use theme tokens`);
   }
 });
 

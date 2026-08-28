@@ -52,12 +52,6 @@ pub fn collect_desktop_local_font_entries() -> Vec<LocalFontEntry> {
     collect_local_font_entries(&desktop_extra_font_dirs())
 }
 
-pub fn create_pdf_font_database() -> fontdb::Database {
-    let mut fontdb = create_font_database(&desktop_extra_font_dirs());
-    apply_pdf_font_defaults(&mut fontdb);
-    fontdb
-}
-
 pub fn read_desktop_local_font(path: &Path) -> Result<Vec<u8>, String> {
     let path = normalize_existing_path(path)
         .ok_or_else(|| format!("로컬 폰트 파일을 찾을 수 없습니다: {}", path.display()))?;
@@ -166,19 +160,6 @@ fn source_path(source: &Source) -> Option<String> {
             Some(path.to_string_lossy().to_string())
         }
         Source::Binary(_) => None,
-    }
-}
-
-fn apply_pdf_font_defaults(fontdb: &mut fontdb::Database) {
-    fontdb.set_serif_family("바탕");
-    fontdb.set_sans_serif_family("맑은 고딕");
-    fontdb.set_monospace_family("D2Coding");
-
-    #[cfg(target_os = "macos")]
-    {
-        fontdb.set_serif_family("AppleMyungjo");
-        fontdb.set_sans_serif_family("Apple SD Gothic Neo");
-        fontdb.set_monospace_family("Menlo");
     }
 }
 

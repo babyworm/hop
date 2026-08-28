@@ -7,6 +7,7 @@
 pub use rhwp::document_core::queries::rendering::PngExportOptions;
 pub use rhwp::parser::extract_thumbnail_only;
 pub use rhwp::DocumentCore;
+use std::path::PathBuf;
 
 /// Split a paragraph for a normal HOP editing action.
 ///
@@ -20,4 +21,24 @@ pub fn split_paragraph_for_editing(
 ) -> Result<String, String> {
     core.split_paragraph_native(section_index, paragraph_index, char_offset, None)
         .map_err(|error| error.to_string())
+}
+
+/// Convert prepared SVG pages to a searchable PDF using rhwp's PDF protocol.
+///
+/// HOP may rewrite font families before this boundary, but PDF object assembly,
+/// font embedding, and ToUnicode mapping remain upstream responsibilities.
+pub fn searchable_pdf_from_svg_pages(
+    svg_pages: &[String],
+    font_paths: Vec<PathBuf>,
+) -> Result<Vec<u8>, String> {
+    let options = searchable_pdf_options(font_paths);
+    rhwp::renderer::pdf::svgs_to_pdf_with_options(svg_pages, &options)
+}
+
+fn searchable_pdf_options(font_paths: Vec<PathBuf>) -> rhwp::renderer::pdf::PdfExportOptions {
+    rhwp::renderer::pdf::PdfExportOptions {
+        font_paths,
+        embed_text: true,
+        ..Default::default()
+    }
 }
