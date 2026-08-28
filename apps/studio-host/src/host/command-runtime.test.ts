@@ -9,6 +9,7 @@ vi.mock('@/upstream/commands', () => ({
     }
   },
   CommandDispatcher: class {},
+  formatCommands: [],
   insertCommands: [],
   pageCommands: [],
   tableCommands: [],
@@ -17,7 +18,6 @@ vi.mock('@/upstream/commands', () => ({
 }));
 vi.mock('@/command/commands/edit', () => ({ editCommands: [] }));
 vi.mock('@/command/commands/file', () => ({ fileCommands: [] }));
-vi.mock('@/command/commands/format', () => ({ formatCommands: [] }));
 
 import { createCommandRuntime } from './command-runtime';
 
@@ -45,6 +45,7 @@ describe('createCommandRuntime', () => {
       editMode: 'normal',
       isEditable: true,
     });
+    expect(runtime.services.gotoPage(4)).toBe(true);
     expect(registeredGroups).toHaveLength(8);
   });
 
@@ -111,6 +112,7 @@ function dependencies(inputHandler: ReturnType<typeof inputHandlerStub>) {
     getInputHandler: () => inputHandler,
     getCanvasView: () => ({
       getViewportManager: () => ({ getZoom: () => 1.25 }),
+      gotoPage: vi.fn(() => true),
     }),
     setStatusMessage: vi.fn(),
   };

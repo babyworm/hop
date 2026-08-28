@@ -7,7 +7,7 @@ import { DocumentDirtyState, EventBus } from '@/upstream/core';
 import type { DocumentInfo } from '@/upstream/core';
 import { createDesktopDocument, setupDesktopEvents } from '@/core/desktop-events';
 import { detectDesktopPlatform, hasPrimaryModifier, hydrateDesktopPlatform } from '@/core/platform';
-import { CanvasView } from '@/view/canvas-view';
+import { CanvasView, Ruler } from '@/upstream/view';
 import {
   CellSelectionRenderer,
   InputHandler,
@@ -20,17 +20,17 @@ import { loadWebFonts } from '@/core/font-loader';
 import { loadStoredLocalFonts } from '@/core/local-fonts';
 import { isSupportedDocumentPath } from '@/core/document-files';
 import { confirmSaveBeforeReplacingDocument } from '@/upstream/commands';
-import { showValidationModalIfNeeded } from '@/ui/validation-modal';
-import { Ruler } from '@/view/ruler';
 import { enhanceCustomSelects } from '@/ui/custom-select';
 import { UpdateNotice, type UpdateNoticeActions } from '@/ui/update-notice';
 import { HomeScreen } from '@/ui/home-screen';
 import type { DesktopBridgeApi } from '@/core/tauri-bridge';
 import { createCommandRuntime } from './host/command-runtime';
+import { createRendererSession } from './host/renderer-session';
 
 const wasm = createBridge();
 const eventBus = new EventBus();
 const documentState = new DocumentDirtyState(eventBus);
+const rendererSession = createRendererSession();
 documentState.installBeforeUnload(window);
 let desktopPlatform = detectDesktopPlatform();
 
@@ -82,7 +82,7 @@ async function initialize(): Promise<void> {
     msg.textContent = 'HWP 파일을 선택해주세요.';
 
     const container = document.getElementById('scroll-container')!;
-    canvasView = new CanvasView(container, wasm, eventBus);
+    canvasView = new CanvasView(container, wasm, eventBus, rendererSession);
     homeScreen = new HomeScreen(container, wasm, {
       openFile: () => {
         dispatcher.dispatch('file:open');
@@ -509,24 +509,6 @@ function setupEventListeners(): void {
   });
 }
 
-async function repairValidationWarningsIfNeeded(displayName: string): Promise<boolean> {
-  try {
-    const report = wasm.getValidationWarnings();
-    if (report.count === 0) return false;
-
-    const choice = await showValidationModalIfNeeded(report);
-    if (choice !== 'auto-fix') return false;
-
-    const reflowedCount = wasm.reflowLinesegs();
-    canvasView?.loadDocument();
-    sbMessage().textContent = `${displayName} (비표준 lineseg ${reflowedCount}건 자동 보정됨)`;
-    return reflowedCount > 0;
-  } catch (error) {
-    console.warn('[validation] 감지/보정 실패 (치명적이지 않음):', error);
-    return false;
-  }
-}
-
 /** 문서 초기화 공통 시퀀스 (loadFile, createNewDocument 양쪽에서 사용) */
 async function initializeDocument(
   docInfo: DocumentInfo,
@@ -534,6 +516,7 @@ async function initializeDocument(
 ): Promise<void> {
   const msg = sbMessage();
   try {
+    canvasView?.prepareDocumentLoad();
     if (docInfo.fontsUsed?.length) {
       await loadWebFonts(docInfo.fontsUsed, (loaded, total) => {
         msg.textContent = `폰트 로딩 중... (${loaded}/${total})`;
@@ -544,18 +527,13 @@ async function initializeDocument(
     sbSection().textContent = `구역: 1 / ${totalSections}`;
     void homeScreen?.refresh(true);
     inputHandler?.deactivate();
-    canvasView?.loadDocument();
+    await canvasView?.loadDocument();
     toolbar?.setEnabled(true);
     toolbar?.initFontDropdown(docInfo.fontsUsed);
     toolbar?.initStyleDropdown();
     inputHandler?.activateWithCaretPosition();
 
-    const normalizedDuringLoad = await repairValidationWarningsIfNeeded(displayName);
-    if (normalizedDuringLoad) {
-      documentState.markDirty('validation-auto-fix');
-    } else {
-      documentState.markClean('document-initialized');
-    }
+    documentState.markClean('document-initialized');
   } catch (error) {
     console.error('[initDoc] 오류:', error);
     if (window.innerWidth < 768) alert(`초기화 오류: ${error}`);

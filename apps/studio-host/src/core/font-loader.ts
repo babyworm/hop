@@ -4,6 +4,7 @@ import { FONT_LIST, REGISTERED_FONTS } from './font-catalog';
 import type { FontEntry } from './font-catalog';
 
 export { REGISTERED_FONTS } from './font-catalog';
+export type { CanvasKitBundledFontSource } from '@/upstream/core';
 
 const CRITICAL_FONTS = new Set(['함초롬바탕', '함초롬돋움']);
 const OS_FONT_CANDIDATES = [

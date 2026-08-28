@@ -67,12 +67,28 @@ export function parseRustToolchain(toml) {
 }
 
 export function tomlSection(toml, name) {
+  const range = tomlSectionRange(toml, name);
+  return range ? toml.slice(range.start, range.end) : '';
+}
+
+function tomlSectionRange(toml, name) {
   const escapedName = escapeRegExp(name);
   const header = toml.match(new RegExp(`^\\[${escapedName}\\][^\\S\\r\\n]*$`, 'm'));
-  if (!header || header.index === undefined) return '';
-  const contents = toml.slice(header.index + header[0].length).replace(/^\r?\n/, '');
-  const nextSection = contents.search(/^\[/m);
-  return nextSection === -1 ? contents : contents.slice(0, nextSection);
+  if (!header || header.index === undefined) return null;
+  const afterHeader = header.index + header[0].length;
+  const newlineLength = toml.slice(afterHeader).match(/^\r?\n/)?.[0].length ?? 0;
+  const start = afterHeader + newlineLength;
+  const nextSection = toml.slice(start).search(/^\[/m);
+  return { start, end: nextSection === -1 ? toml.length : start + nextSection };
+}
+
+function replaceTomlSection(toml, name, contents) {
+  const range = tomlSectionRange(toml, name);
+  if (!range) {
+    if (!contents) return toml;
+    return `${toml.trimEnd()}\n\n[${name}]\n${contents}`;
+  }
+  return `${toml.slice(0, range.start)}${contents}${toml.slice(range.end)}`;
 }
 
 export function cargoLockPackageVersion(lock, packageName) {
@@ -148,6 +164,12 @@ export function assertStableTag(tag) {
   }
 }
 
+export function parseUpdateTag(args) {
+  const operands = args[0] === '--' ? args.slice(1) : args;
+  if (operands.length !== 1 || operands[0].startsWith('--')) return null;
+  return operands[0];
+}
+
 export function normalizeGitSource(source) {
   let normalized = source.trim();
   const scpStyle = normalized.match(/^git@([^:]+):(.+)$/);
@@ -165,8 +187,36 @@ export function cargoPatchTomlPattern(crateName, patch) {
   const git = escapeRegExp(patch.git);
   const rev = escapeRegExp(patch.rev);
   return new RegExp(
-    `${crate}\\s*=\\s*\\{(?=[^}]*git\\s*=\\s*"${git}")(?=[^}]*rev\\s*=\\s*"${rev}")[^}]*\\}`,
+    `^${crate}\\s*=\\s*\\{(?=[^}]*git\\s*=\\s*"${git}")(?=[^}]*rev\\s*=\\s*"${rev}")[^}]*\\}[^\\S\\r\\n]*$`,
+    'm',
   );
+}
+
+export function synchronizeCargoPatchToml(toml, previousPatches, nextPatches) {
+  let patchSection = tomlSection(toml, 'patch.crates-io');
+  for (const [crateName, patch] of Object.entries(previousPatches)) {
+    if (!cargoPatchTomlPattern(crateName, patch).test(patchSection)) {
+      throw new Error(`Cargo.toml patch ${crateName} does not match the current upstream contract`);
+    }
+  }
+
+  const crateNames = new Set([...Object.keys(previousPatches), ...Object.keys(nextPatches)]);
+  for (const crateName of crateNames) {
+    const linePattern = new RegExp(`^${escapeRegExp(crateName)}\\s*=\\s*\\{[^}]*\\}[^\\S\\r\\n]*$`, 'm');
+    const next = nextPatches[crateName];
+    if (!next) {
+      patchSection = patchSection.replace(new RegExp(`${linePattern.source}\\r?\\n?`, 'm'), '');
+      continue;
+    }
+
+    const declaration = `${crateName} = { git = ${JSON.stringify(next.git)}, rev = ${JSON.stringify(next.rev)} }`;
+    if (linePattern.test(patchSection)) {
+      patchSection = patchSection.replace(linePattern, declaration);
+      continue;
+    }
+    patchSection = `${patchSection.trimEnd()}${patchSection ? '\n' : ''}${declaration}\n`;
+  }
+  return replaceTomlSection(toml, 'patch.crates-io', patchSection);
 }
 
 export function cargoLockHasPatchSource(lock, crateName, patch) {

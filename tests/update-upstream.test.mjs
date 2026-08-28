@@ -14,7 +14,9 @@ import {
   normalizeGitSource,
   parsePackageVersion,
   parseRustToolchain,
+  parseUpdateTag,
   repoRelativePath,
+  synchronizeCargoPatchToml,
   tomlSection,
   vendoredArtifactNames,
 } from '../scripts/lib/rhwp-upstream.mjs';
@@ -25,6 +27,14 @@ test('accepts only explicit stable semantic-version tags', () => {
   assert.doesNotThrow(() => assertStableTag('v0.7.19'));
   for (const ref of ['main', 'devel', '0.7.19', 'v0.7.19-rc.1', '']) {
     assert.throws(() => assertStableTag(ref), /stable release tag/);
+  }
+});
+
+test('parses one update tag with or without pnpm argument separator', () => {
+  assert.equal(parseUpdateTag(['v0.7.19']), 'v0.7.19');
+  assert.equal(parseUpdateTag(['--', 'v0.7.19']), 'v0.7.19');
+  for (const args of [[], ['--'], ['--skip-wasm'], ['v0.7.19', 'v0.7.18']]) {
+    assert.equal(parseUpdateTag(args), null);
   }
 });
 
@@ -85,6 +95,10 @@ test('requires the exact Cargo patch repository and revision independent of TOML
     'svg2pdf = { git = "https://example.com/svg2pdf", rev = "2caeb0a038f9128b79833d803b94c2667565c4da" }',
     tomlPattern,
   );
+  assert.doesNotMatch(
+    '# svg2pdf = { git = "https://github.com/planet6897/svg2pdf", rev = "2caeb0a038f9128b79833d803b94c2667565c4da" }',
+    tomlPattern,
+  );
   assert.equal(
     cargoLockHasPatchSource(
       '[[package]]\nname = "svg2pdf"\nversion = "0.13.0"\nsource = "git+https://github.com/planet6897/svg2pdf?rev=x#2caeb0a038f9128b79833d803b94c2667565c4da"',
@@ -92,6 +106,41 @@ test('requires the exact Cargo patch repository and revision independent of TOML
       patch,
     ),
     true,
+  );
+});
+
+test('synchronizes Cargo patch sources as one upstream contract transition', () => {
+  const previous = {
+    svg2pdf: { git: 'https://github.com/old/svg2pdf', rev: '1111111111111111111111111111111111111111' },
+  };
+  const next = {
+    svg2pdf: { git: 'https://github.com/new/svg2pdf', rev: '2222222222222222222222222222222222222222' },
+  };
+  const cargoToml = '[patch.crates-io]\nsvg2pdf = { rev = "1111111111111111111111111111111111111111", git = "https://github.com/old/svg2pdf" }\n';
+  assert.equal(
+    synchronizeCargoPatchToml(cargoToml, previous, next),
+    '[patch.crates-io]\nsvg2pdf = { git = "https://github.com/new/svg2pdf", rev = "2222222222222222222222222222222222222222" }\n',
+  );
+  assert.throws(
+    () => synchronizeCargoPatchToml(cargoToml, next, previous),
+    /does not match the current upstream contract/,
+  );
+
+  const dependencyAndPatch = [
+    '[dependencies]',
+    'svg2pdf = { git = "https://github.com/dependency/svg2pdf", rev = "3333333333333333333333333333333333333333" }',
+    '',
+    cargoToml.trimEnd(),
+    '',
+  ].join('\n');
+  const synchronized = synchronizeCargoPatchToml(dependencyAndPatch, previous, next);
+  assert.match(
+    tomlSection(synchronized, 'dependencies'),
+    /https:\/\/github\.com\/dependency\/svg2pdf/,
+  );
+  assert.match(
+    tomlSection(synchronized, 'patch.crates-io'),
+    /https:\/\/github\.com\/new\/svg2pdf/,
   );
 });
 

@@ -1,5 +1,5 @@
-use pdf_writer::{Finish, Pdf, Ref};
 use hop_rhwp_adapter::DocumentCore;
+use pdf_writer::{Finish, Pdf, Ref};
 use std::collections::HashMap;
 use std::path::Path;
 

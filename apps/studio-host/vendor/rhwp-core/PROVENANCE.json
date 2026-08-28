@@ -1,31 +1,31 @@
 {
   "schemaVersion": 1,
   "source": "https://github.com/edwardkim/rhwp",
-  "version": "0.7.19",
-  "tag": "v0.7.19",
-  "commit": "f137b4c9468eaff5bb43e25108e9c9d39a2ed15b",
+  "version": "0.8.4",
+  "tag": "v0.8.4",
+  "commit": "496333b27d21ddb9114ba9ae340bcb895870c9a7",
   "rustToolchain": "1.93.1",
   "wasmPackVersion": "0.14.0",
   "artifacts": {
     "rhwp_bg.wasm": {
-      "bytes": 6963761,
-      "sha256": "52aa0059b4f4e000de28342308d59e2feccf774d6cad5657998bb23fe24abeb8"
+      "bytes": 8038521,
+      "sha256": "f059bddbb553223ee9ceb01e2b9e4cd8856301dc366f41310ad6f4cddbfb07f8"
     },
     "rhwp.js": {
-      "bytes": 330103,
-      "sha256": "1db3945f89368b151dd9be85b4edd590b56ddf0e583bdabbf86c1855537174cf"
+      "bytes": 404678,
+      "sha256": "d2d2a33e1d75e122a8772fbdb372dcd547f3de4e5a16bf2e663bfb591f17656f"
     },
     "rhwp.d.ts": {
-      "bytes": 129094,
-      "sha256": "c7cca9d7c511b352b953792ee6a11a05558b224ef259eda0fb730279de9a411b"
+      "bytes": 161595,
+      "sha256": "86457f42ee2c32cab51b1dab15352be50f68bd60dbc9a81f3a1fd0de38fd197a"
     },
     "rhwp_bg.wasm.d.ts": {
-      "bytes": 44404,
-      "sha256": "69b29f652a16e10a291e4ae1869f8381c939d15f2503fd5be2c5a8451c0baa3c"
+      "bytes": 54447,
+      "sha256": "2121088aed3a96dfe168eaf0a738ecf3d091430460018da1997d0a0ecb4f606b"
     },
     "package.json": {
-      "bytes": 415,
-      "sha256": "ff9b2ae8616c9ece19ee88901624d0656b32f853d4df22b7024e280412145441"
+      "bytes": 414,
+      "sha256": "05a17e17a69a6163704d10145d4b798416aae5e3a4e98420f2b3dd8999fa6aaf"
     },
     "LICENSE": {
       "bytes": 1072,

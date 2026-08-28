@@ -1,8 +1,9 @@
-import type { CanvasView } from '@/view/canvas-view';
+import type { CanvasView } from '@/upstream/view';
 import type { InputHandler } from '@/upstream/editor';
 import {
   CommandDispatcher,
   CommandRegistry,
+  formatCommands,
   insertCommands,
   pageCommands,
   tableCommands,
@@ -13,7 +14,6 @@ import type { CommandDef, CommandServices, EditorContext, EditorEditMode } from 
 import type { DocumentDirtyState, EventBus, WasmBridge } from '@/upstream/core';
 import { editCommands } from '@/command/commands/edit';
 import { fileCommands } from '@/command/commands/file';
-import { formatCommands } from '@/command/commands/format';
 import { assertUniqueCommandIds } from '../command/replace-upstream-commands';
 
 interface CommandRuntimeDependencies {
@@ -103,6 +103,7 @@ export function createCommandRuntime(dependencies: CommandRuntimeDependencies): 
     getContext,
     getInputHandler,
     getViewportManager: () => getCanvasView()?.getViewportManager() ?? null,
+    gotoPage: (globalPage) => getCanvasView()?.gotoPage(globalPage) ?? false,
     setEditMode,
   };
   const dispatcher = new CommandDispatcher(registry, services, eventBus);

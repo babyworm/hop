@@ -1,4 +1,4 @@
-import { access, cp, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { access, cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
@@ -11,6 +11,7 @@ import {
   currentUpstreamCommit,
   parsePackageVersion,
   parseRustToolchain,
+  parseUpdateTag,
   provenancePath,
   readJson,
   repoRelativePath,
@@ -20,6 +21,7 @@ import {
   studioOverrideManifestPath,
   studioHostDir,
   studioMirroredAssetPaths,
+  synchronizeCargoPatchToml,
   tomlSection,
   vendoredArtifactNames,
   vendorDir,
@@ -28,14 +30,11 @@ import {
 } from './lib/rhwp-upstream.mjs';
 import { verifyRhwpUpstream } from './verify-rhwp-upstream.mjs';
 
-const args = process.argv.slice(2);
-const tags = args.filter((arg) => !arg.startsWith('--'));
-const unknownOptions = args.filter((arg) => arg.startsWith('--'));
-if (tags.length !== 1 || unknownOptions.length > 0) {
-  console.error('Usage: pnpm upstream:update -- v0.7.19');
+const tag = parseUpdateTag(process.argv.slice(2));
+if (!tag) {
+  console.error('Usage: pnpm upstream:update -- vX.Y.Z');
   process.exit(2);
 }
-const [tag] = tags;
 
 assertStableTag(tag);
 await assertSafeWorkingState();
@@ -55,7 +54,8 @@ try {
   run('git', ['checkout', '--detach', targetCommit], { cwd: upstreamDir, stdio: 'inherit' });
 
   const target = await readTargetMetadata(tag, targetCommit, previousLock.source);
-  target.cargoPatches = await resolveRequiredCargoPatches(previousLock.cargoPatches ?? {});
+  target.cargoPatches = await resolveHopCargoPatches(previousLock.cargoPatches ?? {});
+  await syncHopCargoPatches(previousLock.cargoPatches ?? {}, target.cargoPatches);
   await assertHopCargoPatches(target.cargoPatches);
 
   const installedWasmPackVersion = run('wasm-pack', ['--version']).replace(/^wasm-pack\s+/, '');
@@ -121,6 +121,7 @@ async function assertSafeWorkingState() {
     'apps/studio-host/vendor/rhwp-core',
     ...studioMirroredAssetPaths.map((path) => `apps/studio-host/${path}`),
     ...cargoRoots.map((root) => `${repoRelativePath(root)}/Cargo.lock`),
+    ...cargoRoots.map((root) => `${repoRelativePath(root)}/Cargo.toml`),
   ];
   const dirty = run('git', ['status', '--porcelain', '--', ...owned]);
   if (dirty) {
@@ -148,9 +149,11 @@ async function readTargetMetadata(targetTag, commit, source) {
   };
 }
 
-async function resolveRequiredCargoPatches(existing) {
+async function resolveHopCargoPatches(existing) {
   const cargoToml = await readFile(join(upstreamDir, 'Cargo.toml'), 'utf8');
   const upstreamCargoLock = await readFile(join(upstreamDir, 'Cargo.lock'), 'utf8').catch(() => '');
+  // Cargo patches are HOP-owned product policy. If upstream carries the same
+  // patch, follow its pinned source; otherwise retain HOP's reviewed pin.
   if (!/^svg2pdf\s*=/m.test(tomlSection(cargoToml, 'patch.crates-io'))) return existing;
   const source = cargoLockPackageEntries(upstreamCargoLock, 'svg2pdf')
     .map((entry) => entry.source?.match(/^git\+([^?#]+)(?:\?[^#]*)?#([0-9a-f]{40})$/))
@@ -162,12 +165,21 @@ async function resolveRequiredCargoPatches(existing) {
 async function assertHopCargoPatches(patches) {
   for (const root of cargoRoots) {
     const cargoToml = await readFile(join(root, 'Cargo.toml'), 'utf8');
+    const patchSection = tomlSection(cargoToml, 'patch.crates-io');
     for (const [name, patch] of Object.entries(patches)) {
       const expected = cargoPatchTomlPattern(name, patch);
-      if (!expected.test(cargoToml)) {
+      if (!expected.test(patchSection)) {
         throw new Error(`${basename(root)}/Cargo.toml must pin ${name} to ${patch.git}#${patch.rev}`);
       }
     }
+  }
+}
+
+async function syncHopCargoPatches(previousPatches, nextPatches) {
+  for (const root of cargoRoots) {
+    const path = join(root, 'Cargo.toml');
+    const cargoToml = await readFile(path, 'utf8');
+    await writeFile(path, synchronizeCargoPatchToml(cargoToml, previousPatches, nextPatches));
   }
 }
 
@@ -223,6 +235,7 @@ async function backupOwnedFiles(backup) {
   }
   for (const [index, root] of cargoRoots.entries()) {
     await cp(join(root, 'Cargo.lock'), join(backup, `Cargo-${index}.lock`));
+    await cp(join(root, 'Cargo.toml'), join(backup, `Cargo-${index}.toml`));
   }
 }
 
@@ -236,6 +249,7 @@ async function restoreOwnedFiles(backup) {
   }
   for (const [index, root] of cargoRoots.entries()) {
     await cp(join(backup, `Cargo-${index}.lock`), join(root, 'Cargo.lock'));
+    await cp(join(backup, `Cargo-${index}.toml`), join(root, 'Cargo.toml'));
   }
 }
 

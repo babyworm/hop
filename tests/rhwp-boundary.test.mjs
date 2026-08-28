@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { readFile, readdir } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -80,42 +80,52 @@ test('studio host declares compatibility required by imported upstream source', 
   const upstreamPackage = JSON.parse(
     await readFile(join(repoRoot, 'third_party/rhwp/rhwp-studio/package.json'), 'utf8'),
   );
+  const studioHostPackage = JSON.parse(
+    await readFile(join(repoRoot, 'apps/studio-host/package.json'), 'utf8'),
+  );
   const tsconfig = JSON.parse(await readFile(join(repoRoot, 'apps/studio-host/tsconfig.json'), 'utf8'));
 
-  assert.equal(rootPackage.dependencies['@noble/hashes'], upstreamPackage.dependencies['@noble/hashes']);
+  assert.equal(
+    rootPackage.dependencies['@noble/hashes'],
+    upstreamPackage.dependencies['@noble/hashes'],
+  );
+  assert.equal(
+    studioHostPackage.devDependencies['canvaskit-wasm'],
+    upstreamPackage.dependencies['canvaskit-wasm'],
+  );
+  for (const dependency of ['typescript', 'vite']) {
+    assert.equal(
+      studioHostPackage.devDependencies[dependency],
+      upstreamPackage.devDependencies[dependency],
+    );
+  }
   assert.equal(tsconfig.compilerOptions.allowImportingTsExtensions, true);
 });
 
-test('HOP canvas fork consumes the upstream page-local text edit contract', async () => {
+test('HOP composes the upstream renderer and ruler protocols without local forks', async () => {
   const upstreamInputHandler = await readFile(
     join(upstreamStudioRoot, 'engine/input-handler.ts'),
     'utf8',
   );
-  const upstreamCanvasView = await readFile(
-    join(upstreamStudioRoot, 'view/canvas-view.ts'),
-    'utf8',
+  const mainSource = await readFile(join(studioRoot, 'main.ts'), 'utf8');
+  const viewAdapter = await readFile(join(studioRoot, 'upstream/view.ts'), 'utf8');
+  const manifest = JSON.parse(
+    await readFile(join(repoRoot, 'config/rhwp-studio-overrides.json'), 'utf8'),
   );
-  const hopCanvasView = await readFile(join(studioRoot, 'view/canvas-view.ts'), 'utf8');
-  const verificationDelayPattern = /const TEXT_EDIT_STATIC_LAYER_VERIFY_DELAY_MS = (\d+);/;
 
   assert.match(
     upstreamInputHandler,
-    /emit\('document-page-invalidated',\s*\{\s*pageIndex,\s*reason:\s*'text-edit'\s*\}\)/,
+    /emit\('document-page-invalidated',\s*\{[\s\S]*?pageIndex,[\s\S]*?reason:\s*'text-edit'/,
   );
-  assert.match(
-    hopCanvasView,
-    /on\('document-page-invalidated',\s*\(payload\)\s*=>\s*this\.refreshInvalidatedPage\(payload\)\)/,
-  );
-  assert.match(
-    hopCanvasView,
-    /reason === 'text-edit'[\s\S]*?\{ reason: 'text-edit', allowStaticOverlayReuse: true \}/,
-  );
-  assert.match(upstreamCanvasView, verificationDelayPattern);
-  assert.match(hopCanvasView, verificationDelayPattern);
-  assert.equal(
-    upstreamCanvasView.match(verificationDelayPattern)?.[1],
-    hopCanvasView.match(verificationDelayPattern)?.[1],
-  );
+  assert.match(viewAdapter, /CanvasView.*@upstream\/view\/canvas-view/);
+  assert.match(viewAdapter, /RendererSession.*@upstream\/view\/renderer-session/);
+  assert.match(viewAdapter, /Ruler.*@upstream\/view\/ruler/);
+  assert.match(mainSource, /canvasView\?\.prepareDocumentLoad\(\)/);
+  assert.match(mainSource, /await canvasView\?\.loadDocument\(\)/);
+  assert.ok(!manifest.overrides.some((entry) => entry.id.startsWith('view/')));
+  for (const path of ['view/canvas-view.ts', 'view/ruler.ts', 'view/hop-page-renderer.ts']) {
+    await assert.rejects(access(join(studioRoot, path)), { code: 'ENOENT' });
+  }
 });
 
 async function typescriptFiles(directory) {

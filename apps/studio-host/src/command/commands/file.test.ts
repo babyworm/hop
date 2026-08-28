@@ -13,6 +13,7 @@ vi.mock('@/upstream/commands', () => ({
   fileCommands: [
     { id: 'file:open', label: 'Open', execute: upstreamOpen },
     { id: 'file:open-recent', label: 'Open recent', execute: upstreamOpenRecent },
+    { id: 'file:clear-recent', label: 'Clear recent', execute: vi.fn() },
     { id: 'file:save', label: 'Save', execute: upstreamSave },
     {
       id: 'file:save-as',
@@ -22,6 +23,9 @@ vi.mock('@/upstream/commands', () => ({
       execute: upstreamSaveAs,
     },
     { id: 'file:print', label: 'Print', execute: vi.fn() },
+    { id: 'file:save-as-hwp', label: 'Save as HWP', execute: vi.fn() },
+    { id: 'file:save-as-hwpx', label: 'Save as HWPX', execute: vi.fn() },
+    { id: 'file:print-to-pdf', label: 'Print to PDF', execute: vi.fn() },
   ],
 }));
 
@@ -178,6 +182,14 @@ describe('file command desktop overrides', () => {
     expect(command('file:export-pdf').shortcutLabel).toBeUndefined();
   });
 
+  it('does not auto-adopt browser-only save and PDF commands', () => {
+    expect(fileCommands.map(({ id }) => id)).not.toEqual(expect.arrayContaining([
+      'file:save-as-hwp',
+      'file:save-as-hwpx',
+      'file:print-to-pdf',
+    ]));
+  });
+
   it('opens a selected recent document through the desktop bridge', async () => {
     const loaded = { docInfo: { pageCount: 1 }, message: 'loaded' };
     const recent = { path: '/tmp/recent.hwp', fileName: 'recent.hwp' };
@@ -212,6 +224,20 @@ describe('file command desktop overrides', () => {
     expect(openRecentDocumentsDialog).not.toHaveBeenCalled();
     expect(wasm.openDocumentByPath).not.toHaveBeenCalled();
     expect(eventBus.emit).toHaveBeenCalledWith('desktop-status', '최근 문서가 없습니다');
+  });
+
+  it('clears the native recent-document store on desktop', async () => {
+    const eventBus = { emit: vi.fn() };
+    const wasm = {
+      openDocumentByPath: vi.fn(),
+      listRecentDocuments: vi.fn(),
+      clearRecentDocuments: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await command('file:clear-recent').execute(services({ wasm, eventBus }) as never);
+
+    expect(wasm.clearRecentDocuments).toHaveBeenCalledOnce();
+    expect(eventBus.emit).toHaveBeenCalledWith('desktop-status', '최근 문서를 지웠습니다');
   });
 });
 

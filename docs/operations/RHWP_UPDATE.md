@@ -10,7 +10,7 @@
 * `third_party/rhwp` submodule pointer
 * `config/rhwp-upstream.json`의 버전, 태그, 커밋, Rust 및 WASM 생성기 기준선
 * `apps/studio-host/vendor/rhwp-core`의 WASM package와 provenance
-* desktop과 Quick Look의 `Cargo.lock`
+* desktop과 Quick Look의 HOP-owned `[patch]` 선언과 `Cargo.lock`
 * upstream에서 미러링하는 studio asset
 * `config/rhwp-studio-overrides.json`의 upstream counterpart hash
 
@@ -65,7 +65,8 @@ HOP_ALLOW_WASM_PACK_VERSION_CHANGE=1 pnpm upstream:update -- vX.Y.Z
 git status --short
 git diff --submodule=log -- third_party/rhwp
 git diff -- config/rhwp-upstream.json config/rhwp-studio-overrides.json
-git diff -- apps/desktop/src-tauri/Cargo.lock apps/desktop/quicklook/rust/Cargo.lock
+git diff -- apps/desktop/src-tauri/Cargo.toml apps/desktop/src-tauri/Cargo.lock
+git diff -- apps/desktop/quicklook/rust/Cargo.toml apps/desktop/quicklook/rust/Cargo.lock
 git diff -- apps/studio-host/vendor/rhwp-core/PROVENANCE.json
 ```
 
@@ -73,12 +74,24 @@ git diff -- apps/studio-host/vendor/rhwp-core/PROVENANCE.json
 
 * tag, commit, Cargo package, studio package와 vendored WASM 버전이 모두 같다.
 * provenance에는 배포되는 모든 vendor 파일의 byte 수와 SHA-256이 있다.
-* Cargo lockfile의 `rhwp`가 새 버전 하나만 가리키고 필요한 patch source/revision이 유지된다.
+* 두 Cargo manifest의 patch source/revision과 lockfile의 `rhwp`가 같은 새 버전을 가리킨다. upstream이
+  patch 저장소를 옮겼다면 updater가 이전 계약에서 새 계약으로 두 manifest를 함께 전환해야 한다.
 * updater가 출력한 `Review changed studio inputs`의 각 파일을 upstream diff와 비교한다.
 * `extension` 또는 `fork` counterpart 변경이 HOP adapter와 override의 전제 조건을 깨지 않는다.
 * upstream에서 사라진 command, import, public asset 또는 native API를 HOP가 계속 참조하지 않는다.
 * upstream 새 기능을 HOP 제품 정책에 자동 노출하지 않는다. 파일 형식, 저장, 인쇄, 창, recovery 동작은
   별도로 채택 여부를 결정한다.
+
+각 변경된 counterpart는 다음 순서로 분류한다.
+
+1. upstream이 HOP workaround를 흡수했다면 override, alias, baseline과 전용 테스트를 함께 제거한다.
+2. 제품 정책만 남았다면 공개 API를 조합하는 작은 adapter/extension으로 축소한다.
+3. 독립적인 desktop 기능이면 contribution으로 유지한다.
+4. upstream 내부 구현을 계속 복사해야 할 때만 fork를 유지하고 manifest 이유와 검증 책임을 갱신한다.
+
+특히 renderer lifecycle, page positioning, ruler, undo/snapshot, validation repair를 host에서 재구현하지
+않는다. upstream 공개 protocol을 사용하고 HOP은 backend 선택, native session, font authoring처럼 제품이
+소유하는 정책만 경계에서 주입한다.
 
 호환 수정은 우선 `apps/studio-host/src/upstream`, HOP contribution, 또는
 `apps/desktop/rhwp-adapter`에 둔다. upstream 전체 파일 복사는 마지막 수단이며, 새 override가 필요하면

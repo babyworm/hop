@@ -23,6 +23,7 @@ import {
   studioOverrideManifestPath,
   studioHostDir,
   studioMirroredAssetPaths,
+  tomlSection,
   vendoredArtifactNames,
   vendorDir,
 } from './lib/rhwp-upstream.mjs';
@@ -87,8 +88,9 @@ export async function verifyRhwpUpstream() {
 
 async function verifyCargoPatches(lock, cargoRoot, cargoLock) {
   const cargoToml = await readFile(join(cargoRoot, 'Cargo.toml'), 'utf8');
+  const patchSection = tomlSection(cargoToml, 'patch.crates-io');
   for (const [crateName, patch] of Object.entries(lock.cargoPatches ?? {})) {
-    assert.match(cargoToml, cargoPatchTomlPattern(crateName, patch));
+    assert.match(patchSection, cargoPatchTomlPattern(crateName, patch));
     assert.ok(
       cargoLockHasPatchSource(cargoLock, crateName, patch),
       `${crateName} Cargo.lock source must match ${patch.git}#${patch.rev}`,

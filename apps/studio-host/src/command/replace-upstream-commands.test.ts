@@ -3,6 +3,7 @@ import studioHtml from '../../index.html?raw';
 import type { CommandDef } from '@/upstream/commands';
 import {
   insertCommands,
+  formatCommands,
   pageCommands,
   tableCommands,
   toolCommands,
@@ -10,7 +11,6 @@ import {
 } from '@/upstream/commands';
 import { editCommands } from './commands/edit';
 import { fileCommands } from './commands/file';
-import { formatCommands } from './commands/format';
 import { assertUniqueCommandIds, replaceUpstreamCommands } from './replace-upstream-commands';
 import { defaultShortcuts } from './shortcut-map';
 
@@ -72,9 +72,11 @@ describe('replaceUpstreamCommands', () => {
   it('keeps production shortcuts unique and backed by registered commands', () => {
     const shortcutKeys = defaultShortcuts.map(([shortcut]) => [
       shortcut.key.toLowerCase(),
+      shortcut.code?.toLowerCase() ?? '',
       shortcut.ctrl ? 'ctrl' : '',
       shortcut.shift ? 'shift' : '',
       shortcut.alt ? 'alt' : '',
+      shortcut.platform ?? '',
     ].join(':'));
     const missing = defaultShortcuts
       .map(([, id]) => id)

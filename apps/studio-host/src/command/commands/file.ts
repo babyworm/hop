@@ -23,6 +23,16 @@ type DesktopRecentBridge = Pick<
 >;
 
 const upstreamById = new Map(upstreamFileCommands.map((command) => [command.id, command]));
+// HOP owns save format choices and PDF export through native paths. Browser-only
+// commands must be reviewed explicitly instead of arriving through group merge.
+const browserOnlyFileCommands = new Set([
+  'file:save-as-hwp',
+  'file:save-as-hwpx',
+  'file:print-to-pdf',
+]);
+const adoptedUpstreamCommands = upstreamFileCommands.filter(
+  (command) => !browserOnlyFileCommands.has(command.id),
+);
 
 function desktopBridge(wasm: unknown): DesktopFileBridge | null {
   if (!wasm || typeof wasm !== 'object') return null;
@@ -117,6 +127,15 @@ const desktopCommands = new Map<string, CommandDef>([
       if (payload) services.eventBus.emit('desktop-document-loaded', payload);
     });
   })],
+  ['file:clear-recent', withDesktopOverride('file:clear-recent', async (services) => {
+    const desktop = recentBridge(services.wasm);
+    if (!desktop) return upstream('file:clear-recent').execute(services);
+
+    await runDesktopAction(services, '최근 문서 지우기', async () => {
+      await desktop.clearRecentDocuments();
+      emitStatus(services, '최근 문서를 지웠습니다');
+    });
+  })],
   ['file:save', withDesktopOverride('file:save', async (services) => {
     const desktop = desktopBridge(services.wasm);
     if (!desktop) return upstream('file:save').execute(services);
@@ -200,6 +219,6 @@ const hopOnlyCommands: CommandDef[] = [
 ];
 
 export const fileCommands: CommandDef[] = [
-  ...replaceUpstreamCommands(upstreamFileCommands, [...desktopCommands.values()]),
+  ...replaceUpstreamCommands(adoptedUpstreamCommands, [...desktopCommands.values()]),
   ...hopOnlyCommands,
 ];

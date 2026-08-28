@@ -1,22 +1,17 @@
 {
   "schemaVersion": 1,
   "upstream": {
-    "version": "0.7.19",
-    "commit": "f137b4c9468eaff5bb43e25108e9c9d39a2ed15b",
+    "version": "0.8.4",
+    "commit": "496333b27d21ddb9114ba9ae340bcb895870c9a7",
     "counterparts": {
-      "core/font-loader": "245efa5408b0c7a91a07ef8c30625b71ac46f2820a214fe5e7f987d9fbce96f7",
+      "core/font-loader": "fab2b7cd67fff96303fae386760eaebe0620955dea0c967c6ef711f056090c05",
       "core/local-fonts": "2b56048dc4f567de53a22626bc3343debf0004ed410aad9d24161bf01d993195",
-      "command/shortcut-map": "89883af962df89ddbeef577d4d9f46713090de117ad0a343e392e9e2b8fcff44",
-      "command/commands/edit": "47b7d0294f228f381a2d67df805bb94e177bdd0d75316ece959bc1d2598bb916",
-      "command/commands/format": "9ed772a3b186b88933eed69396f474d2958ad457c2b7061dee7f87929b3e49c9",
-      "command/commands/file": "4e767922d868ae93a1ff1bc253be61da5bdf32e1b7108b75c932a987f4da9d84",
+      "command/shortcut-map": "9970f3fd9203aa9a044100776e8c650491bbc3f485972984587170d3124ca63d",
+      "command/commands/edit": "72ffb0cd4b11870f069b7c00198665f380861aab69f8f47329f66ae418cc7f35",
+      "command/commands/file": "f2a0a67b6d424fa4c9cf0cd16a64a57b673451bf139ef2103106b1ce82330503",
       "ui/about-dialog": "9cbb79eef1e407706899c2989147f3da3f82678a39fe5b67923a456d5157c84b",
       "ui/dialog": "ec55feb51d76ab90094bbc04ba7d2c5eacb25dee4ba7e8dd5c1c88e746944afd",
-      "ui/style-edit-dialog": "c3f269317c6345954df99a9ba50669aa2658f0773d4d3cdc15d2abc59d90b734",
-      "ui/toolbar": "9e85e9429bd28167cf4ac12c365abb4fce984770de058a3022b05a69d1fe24ea",
-      "ui/validation-modal": "26487429dd0cf320bbaadc8a23319a397c3f06ab2ee8d2a6ccfe915eda17a523",
-      "view/canvas-view": "35d174a281ec4fe6c64b54d33a59855a32717fabc067276817cf94f2341338d3",
-      "view/ruler": "43e4284348662ba6164771c3597a33a619f18a85471b677886c55284bca70dbb"
+      "ui/toolbar": "29227846354d9fa97d81fd8bdcb7f8d0b5ce9817c8a11b4525b8f02251891427"
     },
     "assets": {
       "public/images/icon_small_ko_dark.svg": "9d02ea0b8c1d399a89290d97613759826f19f3e3f392b6d79dcf6109e7e15fa6"
@@ -27,11 +22,6 @@
       "id": "core/font-loader",
       "strategy": "fork",
       "reason": "HOP packages its own redistributable font catalog and authoring policy."
-    },
-    {
-      "id": "core/font-application",
-      "strategy": "contribution",
-      "reason": "HOP normalizes desktop font choices before applying upstream character properties."
     },
     {
       "id": "core/font-authoring-policy",
@@ -84,11 +74,6 @@
       "reason": "Wraps selected upstream edit commands with HOP clipboard behavior."
     },
     {
-      "id": "command/commands/format",
-      "strategy": "extension",
-      "reason": "Wraps upstream formatting with HOP font normalization."
-    },
-    {
       "id": "command/commands/file",
       "strategy": "extension",
       "reason": "Replaces native file actions while falling back to upstream web actions."
@@ -129,11 +114,6 @@
       "reason": "Owns HOP native recent-document interaction."
     },
     {
-      "id": "ui/style-edit-dialog",
-      "strategy": "fork",
-      "reason": "Preserves HOP font normalization in style editing until upstream exposes an apply hook."
-    },
-    {
       "id": "ui/toolbar",
       "strategy": "fork",
       "reason": "Preserves HOP authoring-font policy and asynchronous desktop font loading."
@@ -142,21 +122,6 @@
       "id": "ui/update-notice",
       "strategy": "contribution",
       "reason": "Owns HOP desktop updater presentation and actions."
-    },
-    {
-      "id": "ui/validation-modal",
-      "strategy": "fork",
-      "reason": "Adds HOP document-repair confirmation and cancellation policy."
-    },
-    {
-      "id": "view/canvas-view",
-      "strategy": "fork",
-      "reason": "Composes HOP page positioning and renderer recovery behavior."
-    },
-    {
-      "id": "view/ruler",
-      "strategy": "fork",
-      "reason": "Preserves HOP table-aware ruler behavior and page positioning."
     },
     {
       "id": "styles/about-dialog.css",
