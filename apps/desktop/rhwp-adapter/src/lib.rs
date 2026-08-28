@@ -37,6 +37,9 @@ pub fn searchable_pdf_from_svg_pages(
 
 fn searchable_pdf_options(font_paths: Vec<PathBuf>) -> rhwp::renderer::pdf::PdfExportOptions {
     rhwp::renderer::pdf::PdfExportOptions {
+        fallback_serif: "Noto Sans KR".to_string(),
+        fallback_sans: "Noto Sans KR".to_string(),
+        fallback_mono: "Noto Sans KR".to_string(),
         font_paths,
         embed_text: true,
         ..Default::default()

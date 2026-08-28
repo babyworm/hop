@@ -67,6 +67,15 @@ test('desktop keeps PDF policy thin and delegates searchable encoding to rhwp', 
   assert.match(pdfExport, /searchable_pdf_from_svg_pages/);
   assert.match(adapter, /svgs_to_pdf_with_options/);
   assert.match(adapter, /embed_text:\s*true/);
+  assert.match(adapter, /fallback_sans:\s*"Noto Sans KR"\.to_string\(\)/);
+
+  const tauriConfig = await readFile(
+    join(repoRoot, 'apps/desktop/src-tauri/tauri.conf.json'),
+    'utf8',
+  );
+  assert.match(tauriConfig, /NotoSansKR-Regular\.ttf/);
+  assert.match(tauriConfig, /fonts\/pdf\/NotoSansKR-Regular\.ttf/);
+  assert.match(pdfExport, /third_party\/rhwp\/ttfs\/opensource/);
 });
 
 test('every Vite override is classified and points to an intentional HOP module', async () => {

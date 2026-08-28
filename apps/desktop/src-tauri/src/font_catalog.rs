@@ -2,6 +2,7 @@ use serde::Serialize;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use tauri::{AppHandle, Manager};
 use usvg::fontdb::{self, Source};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -45,6 +46,15 @@ pub fn desktop_extra_font_dirs() -> Vec<PathBuf> {
         }
     }
 
+    dedupe_existing_dirs(dirs)
+}
+
+pub fn pdf_font_dirs(app: &AppHandle) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        dirs.push(resource_dir.join("fonts/pdf"));
+    }
+    dirs.extend(desktop_extra_font_dirs());
     dedupe_existing_dirs(dirs)
 }
 

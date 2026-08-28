@@ -447,10 +447,12 @@ fn export_pdf_from_core(
     open_after: bool,
 ) -> Result<(), String> {
     let path = PathBuf::from(&target_path);
+    let font_dirs = crate::font_catalog::pdf_font_dirs(app);
     let total = crate::pdf_export::export_core_to_pdf(
         core,
         &path,
         page_range,
+        font_dirs,
         |phase, done, total, message| {
             emit_progress(app, job_id, phase, done, total, &message);
         },

@@ -1,8 +1,7 @@
 use hop_rhwp_adapter::{searchable_pdf_from_svg_pages, DocumentCore};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::commands::PageRange;
-use crate::font_catalog;
 use crate::pdf_font_fallbacks::add_font_fallbacks;
 use crate::state::atomic_write;
 
@@ -10,6 +9,7 @@ pub fn export_core_to_pdf(
     core: &DocumentCore,
     target_path: &Path,
     page_range: Option<PageRange>,
+    font_dirs: Vec<PathBuf>,
     mut on_progress: impl FnMut(&str, u32, u32, String),
 ) -> Result<u32, String> {
     ensure_pdf_path(target_path)?;
@@ -33,8 +33,7 @@ pub fn export_core_to_pdf(
         );
     }
 
-    let pdf_bytes =
-        searchable_pdf_from_svg_pages(&svg_pages, font_catalog::desktop_extra_font_dirs())?;
+    let pdf_bytes = searchable_pdf_from_svg_pages(&svg_pages, font_dirs)?;
     atomic_write(target_path, &pdf_bytes)?;
     on_progress("write", total, total, "PDF 파일을 저장했습니다".to_string());
 
@@ -151,7 +150,8 @@ mod tests {
 
     #[test]
     fn searchable_pdf_contains_a_unicode_text_map() {
-        let font_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/fonts");
+        let font_dir =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../third_party/rhwp/ttfs/opensource");
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120">
           <text x="16" y="64" font-family="Noto Sans KR" font-size="24">검색 가능한 PDF</text>
         </svg>"#;
