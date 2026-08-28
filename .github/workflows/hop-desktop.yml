@@ -782,7 +782,7 @@ jobs:
         run: |
           set -euo pipefail
           find artifacts -type f | sort
-          if ! find artifacts -type f | grep -q .; then
+          if [[ -z "$(find artifacts -type f -print -quit)" ]]; then
             echo "No desktop artifacts were downloaded."
             exit 1
           fi

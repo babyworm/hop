@@ -179,6 +179,16 @@ test('desktop release checksum manifest does not hash itself', async () => {
   );
 });
 
+test('desktop release artifact presence check is pipefail-safe', async () => {
+  const releaseWorkflow = await readFile(
+    join(repoRoot, '.github/workflows/hop-desktop.yml'),
+    'utf8',
+  );
+
+  assert.match(releaseWorkflow, /find artifacts -type f -print -quit/);
+  assert.doesNotMatch(releaseWorkflow, /find artifacts -type f \| grep -q/);
+});
+
 test('HOP keeps PDF export menu-only without a stale Ctrl+E label', async () => {
   const fileCommands = await readFile(join(repoRoot, 'apps/studio-host/src/command/commands/file.ts'), 'utf8');
   const indexHtml = await readFile(join(repoRoot, 'apps/studio-host/index.html'), 'utf8');

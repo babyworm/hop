@@ -10,7 +10,9 @@ toolbar markup, causing controls to wrap into a broken second row on macOS.
 
 The immutable v0.4.3 release cannot receive the corrected upstream DOM contract.
 The fix needs a new patch release with aligned desktop and Quick Look metadata,
-signed updater artifacts, and stable cross-platform asset names.
+signed updater artifacts, and stable cross-platform asset names. The first draft
+build also exposed a `pipefail` false negative in the release artifact presence
+check: `grep -q` closed its pipe early and caused `find` to fail with SIGPIPE.
 
 ## Goal
 
@@ -35,7 +37,8 @@ signed updater artifacts, and stable cross-platform asset names.
 1. Synchronize only HOP's `#style-bar` subtree with pinned rhwp v0.8.4.
 2. Add a boundary test that compares the HOP and pinned upstream toolbar markup.
 3. Align application metadata at v0.4.4 and run the full local release gates.
-4. Tag the verified commit, build every supported platform as a draft release,
+4. Make the release artifact presence check independent of short-circuit pipes.
+5. Tag the verified commit, build every supported platform as a draft release,
    inspect the release assets and updater manifest, then publish it.
 
 ## Verification plan
@@ -44,6 +47,7 @@ signed updater artifacts, and stable cross-platform asset names.
 - `pnpm run clippy:desktop`
 - `pnpm upstream:verify`
 - `pnpm run build:studio`
+- pipefail-safe release workflow regression test
 - macOS debug application visual inspection
 - GitHub Actions platform matrix and release integrity checks
 - Published asset names, checksums, and updater manifest inspection
