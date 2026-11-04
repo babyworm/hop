@@ -29,6 +29,8 @@ that use **Alt**, macOS users should use **Option (⌥)**.
 | Cmd/Ctrl+V | Paste |
 | Cmd/Ctrl+A | Select All |
 | Cmd/Ctrl+E | Delete |
+| F9 | Convert Hangul to Hanja |
+| Alt/Option+F9 | Convert Hanja to Hangul |
 | Cmd/Ctrl+F | Find |
 | Cmd/Ctrl+F2 | Find and Replace |
 | Cmd/Ctrl+L | Find Again |
@@ -112,3 +114,6 @@ browser/webview conflicts:
 Korean IME key equivalents (ㅜ, ㄹ, ㅅ, ㅎ, ㅁ, ㅋ, ㄷ, ㄱ) are also
 registered for Alt-based shortcuts so they work regardless of the active
 input method.
+
+On Linux desktops that reserve Alt+F9 for the window manager, use the Edit
+menu or toolbar command if the key event is not delivered to HOP.

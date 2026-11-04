@@ -8,6 +8,7 @@ import {
   cargoLockPackageVersion,
   cargoLockPackageEntries,
   cargoRoots,
+  changedStudioInputs,
   currentUpstreamCommit,
   parsePackageVersion,
   parseRustToolchain,
@@ -252,17 +253,4 @@ async function restoreOwnedFiles(backup) {
     await cp(join(backup, `Cargo-${index}.lock`), join(root, 'Cargo.lock'));
     await cp(join(backup, `Cargo-${index}.toml`), join(root, 'Cargo.toml'));
   }
-}
-
-function changedStudioInputs(previous, next) {
-  const changed = [];
-  for (const field of ['counterparts', 'assets']) {
-    const before = previous.upstream?.[field] ?? {};
-    const after = next.upstream?.[field] ?? {};
-    const ids = new Set([...Object.keys(before), ...Object.keys(after)]);
-    for (const id of ids) {
-      if (before[id] !== after[id]) changed.push(field === 'assets' ? `asset:${id}` : id);
-    }
-  }
-  return changed.sort();
 }
