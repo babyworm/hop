@@ -31,6 +31,7 @@ import { HomeScreen } from '@/ui/home-screen';
 import type { DesktopBridgeApi } from '@/core/tauri-bridge';
 import { handleHanjaShortcutCapture } from '@/command/shortcut-map';
 import { createCommandRuntime } from './host/command-runtime';
+import { createDocumentReplacementInputGuard } from './host/document-replacement-guard';
 import { createRendererSession } from './host/renderer-session';
 import { HanjaContextMenu } from './ui/hanja-context-menu';
 
@@ -62,10 +63,12 @@ let inputHandler: InputHandler | null = null;
 let toolbar: Toolbar | null = null;
 let ruler: Ruler | null = null;
 let homeScreen: HomeScreen | null = null;
-wasm.setBeforeDocumentReplacement(() => {
-  inputHandler?.deactivate();
-  toolbar?.setEnabled(false);
+const documentReplacementGuard = createDocumentReplacementInputGuard({
+  getInputHandler: () => inputHandler,
+  getToolbar: () => toolbar,
+  hasLoadedDocument: () => wasm.pageCount > 0,
 });
+wasm.setBeforeDocumentReplacement(documentReplacementGuard.beforeReplacement);
 
 // 상태 바 요소
 const sbMessage = () => document.getElementById('sb-message')!;
@@ -78,7 +81,9 @@ const commandRuntime = createCommandRuntime({
   wasm,
   eventBus,
   documentState,
-  getInputHandler: () => inputHandler?.isActive() ? inputHandler : null,
+  getInputHandler: () => (
+    !documentReplacementGuard.isReplacing() && inputHandler?.isActive() ? inputHandler : null
+  ),
   getCanvasView: () => canvasView,
   setStatusMessage: (message) => { sbMessage().textContent = message; },
 });

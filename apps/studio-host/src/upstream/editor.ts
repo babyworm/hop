@@ -47,9 +47,11 @@ export function getInputHandlerCursorAccess(inputHandler: unknown): CursorAccess
 }
 
 /**
- * Upstream currently pops before undo/redo invokes a command. Preserve only a
- * Hanja command that explicitly reports that its failed transition was fully
- * recovered; all other errors retain upstream behavior.
+ * Upstream drops a failed undo/redo entry from its source stack unless the
+ * command reports retainOnFailure(), and that hook moves a failed redo onto the
+ * undo stack for partial changes. A fully recovered Hanja transition must stay
+ * on its original stack instead, so restore only commands that explicitly
+ * report full recovery; all other errors retain upstream behavior.
  */
 export function installRecoveredCommandHistoryGuard(inputHandler: InputHandler): void {
   const history: unknown = Reflect.get(inputHandler, 'history');

@@ -14,12 +14,12 @@
       "ui/toolbar": "f80b61e04ddd36d64d08a4f06c364fbef174400e2ecec7186c4ae145bb3d4bb9"
     },
     "privateInputs": {
-      "engine/command": "eed56c6feb5d839bbcc38f43c7d6a5f4da08b00267a29caa012c25878794c82d",
-      "engine/cursor": "b13155d6be476e170a3c38bde86a5bd1474a99c0911a509c444739fb0422f399",
-      "engine/history": "140084745f4556eb9c1bdf2d6c5d67a1062cd4ee6eecebd1c37a33581c7892f4",
-      "engine/input-handler": "708df121ef0e157e96472421b5250a126757b75b8e52a47ecb8bd4c15d8dc1fe",
-      "styles/dialogs.css": "f30eb02c527bf4897769b8d04fe46c083d06581bcfc39ff9c2015386466c8d60",
-      "styles/menu-bar.css": "b0e97c597be9db0d76bee4778a2481dfb799601305ffff9155c537d68bdee98b",
+      "engine/command": "cfbc282324d2de90d3ae51cc82294a14685237877b14a3435f5074b6dd3e341f",
+      "engine/cursor": "42e7aaaea9e4d0da0be8dee9c419c11aa0e241e410e41afc1bc148caa2b28d97",
+      "engine/history": "8695835288ae7970b8a3dd423029e8599f1b3a314cecbd259232d106980d9588",
+      "engine/input-handler": "9bbba9420b2a8d4c3630a1797976bf9e65b9b1b4a67c608f305e1f5a873c31ce",
+      "styles/dialogs.css": "9969e364535a2ffbf9fd9a9732288737f37821a212e19a14ba4c779d771b15d8",
+      "styles/menu-bar.css": "85379394c8fe1eff48fac8ecf4f808d2c1c6ddb93887642040db6d6a92b43a10",
       "ui/context-menu": "5ab0dee205a542a9c861a3512cf11fb55f743d679ef07ecb7e3662a09826460c"
     },
     "assets": {
