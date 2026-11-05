@@ -10,13 +10,15 @@ import { detectDesktopPlatform, hasPrimaryModifier, hydrateDesktopPlatform } fro
 import { CanvasView, Ruler } from '@/upstream/view';
 import {
   CellSelectionRenderer,
+  getInputHandlerShortcutCaptureState,
   InputHandler,
+  installRecoveredCommandHistoryGuard,
   TableObjectRenderer,
   TableResizeRenderer,
 } from '@/upstream/editor';
 import { Toolbar } from '@/ui/toolbar';
 import { MODAL_DIALOG_CLOSED_EVENT } from '@/ui/dialog';
-import { CommandPalette, ContextMenu, MenuBar, initStyleToolbarOverflow } from '@/upstream/ui';
+import { CommandPalette, MenuBar, initStyleToolbarOverflow } from '@/upstream/ui';
 import { loadWebFonts } from '@/core/font-loader';
 import { loadStoredLocalFonts } from '@/core/local-fonts';
 import { isSupportedDocumentPath } from '@/core/document-files';
@@ -27,8 +29,11 @@ import { enhanceCustomSelects } from '@/ui/custom-select';
 import { UpdateNotice, type UpdateNoticeActions } from '@/ui/update-notice';
 import { HomeScreen } from '@/ui/home-screen';
 import type { DesktopBridgeApi } from '@/core/tauri-bridge';
+import { handleHanjaShortcutCapture } from '@/command/shortcut-map';
 import { createCommandRuntime } from './host/command-runtime';
+import { createDocumentReplacementInputGuard } from './host/document-replacement-guard';
 import { createRendererSession } from './host/renderer-session';
+import { HanjaContextMenu } from './ui/hanja-context-menu';
 
 const wasm = createBridge();
 const eventBus = new EventBus();
@@ -58,6 +63,12 @@ let inputHandler: InputHandler | null = null;
 let toolbar: Toolbar | null = null;
 let ruler: Ruler | null = null;
 let homeScreen: HomeScreen | null = null;
+const documentReplacementGuard = createDocumentReplacementInputGuard({
+  getInputHandler: () => inputHandler,
+  getToolbar: () => toolbar,
+  hasLoadedDocument: () => wasm.pageCount > 0,
+});
+wasm.setBeforeDocumentReplacement(documentReplacementGuard.beforeReplacement);
 
 // 상태 바 요소
 const sbMessage = () => document.getElementById('sb-message')!;
@@ -70,11 +81,19 @@ const commandRuntime = createCommandRuntime({
   wasm,
   eventBus,
   documentState,
-  getInputHandler: () => inputHandler,
+  getInputHandler: () => (
+    !documentReplacementGuard.isReplacing() && inputHandler?.isActive() ? inputHandler : null
+  ),
   getCanvasView: () => canvasView,
   setStatusMessage: (message) => { sbMessage().textContent = message; },
 });
 const { dispatcher, registry, services: commandServices } = commandRuntime;
+document.addEventListener('keydown', (event) => {
+  handleHanjaShortcutCapture(event, dispatcher, {
+    ...getInputHandlerShortcutCaptureState(inputHandler),
+    hasActiveModal: document.querySelector('.modal-overlay') !== null,
+  });
+}, true);
 
 document.addEventListener(MODAL_DIALOG_CLOSED_EVENT, () => {
   if (inputHandler?.isActive()) inputHandler.focus();
@@ -126,6 +145,7 @@ async function initialize(): Promise<void> {
       canvasView.getVirtualScroll(),
       canvasView.getViewportManager(),
     );
+    installRecoveredCommandHistoryGuard(inputHandler);
     inputHandler.setEditMode(commandRuntime.getEditMode());
 
     toolbar = new Toolbar(document.getElementById('style-bar')!, wasm, eventBus, dispatcher);
@@ -134,7 +154,7 @@ async function initialize(): Promise<void> {
 
     // InputHandler에 커맨드 디스패처 및 컨텍스트 메뉴 주입
     inputHandler.setDispatcher(dispatcher);
-    inputHandler.setContextMenu(new ContextMenu(dispatcher, registry));
+    inputHandler.setContextMenu(new HanjaContextMenu(dispatcher, registry, commandServices));
     inputHandler.setCommandPalette(new CommandPalette(registry, dispatcher));
     inputHandler.setCellSelectionRenderer(
       new CellSelectionRenderer(container, canvasView.getVirtualScroll()),

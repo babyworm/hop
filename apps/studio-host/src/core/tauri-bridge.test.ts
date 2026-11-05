@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { hashBytes } from './chunked-fs';
+import { currentDocumentGeneration } from './document-generation';
 import { TauriBridge } from './tauri-bridge';
 
 const passwordPrompt = vi.hoisted(() => vi.fn());
@@ -217,6 +218,49 @@ describe('TauriBridge', () => {
     expect(bridge.requiresPasswordForSave).toBe(true);
   });
 
+  it('advances generation before native open bookkeeping finishes', async () => {
+    const bridge = new TauriBridge();
+    const inputLease = { active: true };
+    const getCommandInput = () => inputLease.active ? inputLease : null;
+    bridge.setBeforeDocumentReplacement(() => {
+      inputLease.active = false;
+    });
+    let releaseFinderRecent: () => void = () => undefined;
+    const finderRecentPending = new Promise<void>((resolve) => {
+      releaseFinderRecent = resolve;
+    });
+    fsOpenMock.mockResolvedValue(readHandle([1]));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'prepare_document_open') return undefined;
+      if (command === 'open_document_tracking') {
+        return nativeOpenResult({ docId: 'next-doc', fileName: 'next.hwp' });
+      }
+      if (command === 'note_finder_recent_document') return finderRecentPending;
+      if (command === 'record_recent_document') return undefined;
+      throw new Error(`unexpected command ${command}`);
+    });
+    const before = currentDocumentGeneration();
+
+    const opening = bridge.openDocumentByPath('/tmp/next.hwp');
+    let openingFinished = false;
+    void opening.then(
+      () => { openingFinished = true; },
+      () => { openingFinished = true; },
+    );
+    await vi.waitFor(() => expect(getWasmMock(bridge, 'loadDocumentMock')).toHaveBeenCalledOnce());
+
+    expect(currentDocumentGeneration()).toBe(before + 1);
+    expect(inputLease.active).toBe(false);
+    expect(getCommandInput()).toBeNull();
+    expect(openingFinished).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalledWith('record_recent_document', expect.anything());
+
+    releaseFinderRecent();
+    await opening;
+    expect(inputLease.active).toBe(false);
+    expect(getCommandInput()).toBeNull();
+  });
+
   it('reads large documents in multiple fs chunks before handing them to wasm', async () => {
     const bridge = new TauriBridge();
     const bytes = new Uint8Array(4 * 1024 * 1024 + 3);
@@ -332,6 +376,46 @@ describe('TauriBridge', () => {
     await expect(bridge.createNewDocumentAsync()).rejects.toThrow('new doc failed');
 
     expect(invokeMock).toHaveBeenCalledWith('close_document', { docId: 'new-native' });
+  });
+
+  it('advances generation before replaced native document cleanup finishes', async () => {
+    const bridge = new TauriBridge();
+    const inputLease = { active: true };
+    const getCommandInput = () => inputLease.active ? inputLease : null;
+    bridge.setBeforeDocumentReplacement(() => {
+      inputLease.active = false;
+    });
+    let releaseClose: () => void = () => undefined;
+    const closePending = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+    applyOpenResult(bridge, nativeOpenResult({ docId: 'old-doc' }));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'create_document') {
+        return nativeOpenResult({ docId: 'new-doc', sourcePath: null });
+      }
+      if (command === 'close_document') return closePending;
+      throw new Error(`unexpected command ${command}`);
+    });
+    const before = currentDocumentGeneration();
+
+    const creating = bridge.createNewDocumentAsync();
+    let creatingFinished = false;
+    void creating.then(
+      () => { creatingFinished = true; },
+      () => { creatingFinished = true; },
+    );
+    await vi.waitFor(() => expect(getWasmMock(bridge, 'createNewDocumentMock')).toHaveBeenCalledOnce());
+
+    expect(currentDocumentGeneration()).toBe(before + 1);
+    expect(inputLease.active).toBe(false);
+    expect(getCommandInput()).toBeNull();
+    expect(creatingFinished).toBe(false);
+
+    releaseClose();
+    await creating;
+    expect(inputLease.active).toBe(false);
+    expect(getCommandInput()).toBeNull();
   });
 
   it('resets source format to hwp after creating a native blank document', async () => {

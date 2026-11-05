@@ -12,6 +12,7 @@ import {
 import { toolbarLabelsCommand } from '../host/toolbar-labels';
 import { editCommands } from './commands/edit';
 import { fileCommands } from './commands/file';
+import { hanjaCommands } from './commands/hanja';
 import { assertUniqueCommandIds, replaceUpstreamCommands } from './replace-upstream-commands';
 import { defaultShortcuts } from './shortcut-map';
 
@@ -19,6 +20,7 @@ const command = (id: string): CommandDef => ({ id, label: id, execute: vi.fn() }
 const productionCommandGroups = [
   fileCommands,
   editCommands,
+  hanjaCommands,
   [...viewCommands, toolbarLabelsCommand],
   formatCommands,
   insertCommands,

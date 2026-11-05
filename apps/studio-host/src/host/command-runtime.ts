@@ -14,6 +14,7 @@ import type { CommandDef, CommandServices, EditorContext, EditorEditMode } from 
 import type { DocumentDirtyState, EventBus, WasmBridge } from '@/upstream/core';
 import { editCommands } from '@/command/commands/edit';
 import { fileCommands } from '@/command/commands/file';
+import { hanjaCommands } from '../command/commands/hanja';
 import { assertUniqueCommandIds } from '../command/replace-upstream-commands';
 import { toolbarLabelsCommand } from './toolbar-labels';
 
@@ -40,6 +41,7 @@ export interface CommandRuntime {
 const commandContributions: readonly CommandDef[][] = [
   fileCommands,
   editCommands,
+  hanjaCommands,
   [...viewCommands, toolbarLabelsCommand],
   formatCommands,
   insertCommands,
