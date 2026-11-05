@@ -1,2 +1,3 @@
 apps/studio-host/public/dictionaries/hanja/*.json text eol=lf linguist-generated=true
 assets/dictionaries/hanja/*.json text eol=lf linguist-generated=true
+apps/studio-host/public/dictionaries/hanja/THIRD_PARTY_NOTICES.md text eol=lf
